@@ -52,7 +52,7 @@ export default function LoginForm({ onLogin }) {
             <input
               className={`form-input ${error && form.ruc.length !== 11 ? 'error' : ''}`}
               type="text" maxLength={11} value={form.ruc}
-              onChange={set('ruc')} placeholder="20603448308"
+              onChange={set('ruc')} placeholder="Ej: 20123456789"
               autoComplete="off"
             />
           </div>
@@ -61,7 +61,7 @@ export default function LoginForm({ onLogin }) {
             <input
               className="form-input" type="text"
               value={form.usuario} onChange={set('usuario')}
-              placeholder="OLINKYLA" autoComplete="username"
+              placeholder="Tu usuario SOL" autoComplete="username"
             />
           </div>
           <div className="form-group">

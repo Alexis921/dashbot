@@ -121,12 +121,11 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
         result = await scrape_sunat_notifications(
             ruc, session["usuario"], session["password"]
         )
-
-    if not result["success"]:
-        log = SyncLog(ruc=ruc, status="error", error_msg=result.get("error"))
-        db.add(log)
-        db.commit()
-        raise HTTPException(502, f"Error al acceder a SUNAT: {result.get('error')}")
+        # Si SUNAT no responde, usar demo automáticamente
+        if not result["success"]:
+            result = await get_demo_notifications(ruc)
+            result["fallback"] = True
+            result["fallback_reason"] = "SUNAT no disponible en este momento. Mostrando datos de ejemplo."
 
     # Guardar notificaciones en DB
     new_count = 0
@@ -173,7 +172,8 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
         "notifications": result["notifications"],
         "ai_summary": ai_summary,
         "synced_at": datetime.utcnow().isoformat(),
-        "is_demo": result.get("demo", False),
+        "is_demo": result.get("demo", False) or result.get("fallback", False),
+        "fallback_reason": result.get("fallback_reason"),
     }
 
 
