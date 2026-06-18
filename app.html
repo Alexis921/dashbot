@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashbot – Buzón SUNAT Inteligente</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#c8102e;--red-dark:#a00d24;--red-light:#fde8ec;
+  --navy:#0d1b3e;--yellow:#f4c430;--yellow-light:#fffbea;
+  --green:#1a7a4a;--blue:#1a56a0;
+  --gray-50:#f8f9fa;--gray-100:#f1f3f5;--gray-200:#e9ecef;
+  --gray-400:#ced4da;--gray-600:#6c757d;--gray-800:#343a40;
+  --white:#ffffff;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08);
+  --shadow:0 4px 16px rgba(0,0,0,.10);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.14);
+  --radius:12px;--radius-sm:8px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--gray-100);color:var(--gray-800);min-height:100vh}
+
+.app-shell{display:flex;flex-direction:column;height:100vh;max-width:960px;margin:0 auto;background:var(--white);box-shadow:var(--shadow-lg)}
+
+/* HEADER */
+.header{background:linear-gradient(135deg,var(--navy) 0%,#1a2d5a 100%);color:white;padding:0 20px;display:flex;align-items:center;gap:12px;flex-shrink:0;height:64px;border-bottom:3px solid var(--red)}
+.header-logo-box{width:36px;height:36px;background:var(--red);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.header-title{font-size:19px;font-weight:800;letter-spacing:-.2px}
+.header-sub{font-size:10px;opacity:.65;margin-top:1px;letter-spacing:.2px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.ruc-badge{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:700}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;flex-shrink:0}
+.btn-logout{background:transparent;border:1px solid rgba(255,255,255,.35);color:white;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;transition:background .15s}
+.btn-logout:hover{background:rgba(255,255,255,.12)}
+.btn-home{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:white;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;text-decoration:none;display:flex;align-items:center;gap:5px}
+.btn-home:hover{background:rgba(255,255,255,.2)}
+
+/* CHAT */
+.chat-area{flex:1;overflow-y:auto;padding:20px 20px 8px;display:flex;flex-direction:column;gap:14px}
+.chat-area::-webkit-scrollbar{width:5px}
+.chat-area::-webkit-scrollbar-thumb{background:var(--gray-400);border-radius:3px}
+.msg{display:flex;gap:10px;max-width:88%;animation:fadeIn .25s ease}
+.msg.bot{align-self:flex-start}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;margin-top:2px}
+.msg.bot .msg-avatar{background:var(--red)}
+.msg.user .msg-avatar{background:var(--blue)}
+.msg-bubble{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:0 var(--radius) var(--radius) var(--radius);padding:10px 14px;font-size:14px;line-height:1.55}
+.msg.user .msg-bubble{background:var(--blue);color:white;border-color:var(--blue);border-radius:var(--radius) 0 var(--radius) var(--radius)}
+.msg-time{font-size:11px;opacity:.5;margin-top:4px}
+
+/* NOTIF CARDS */
+.notif-list{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.notif-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;transition:box-shadow .15s,transform .1s;border-left:4px solid var(--gray-400)}
+.notif-card:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.notif-card.urgent{border-left-color:var(--red);background:#fff8f8}
+.notif-card.read{opacity:.65}
+.notif-card-header{display:flex;align-items:flex-start;gap:8px}
+.notif-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.notif-subject{font-weight:600;font-size:13px;color:var(--gray-800);flex:1;line-height:1.4}
+.notif-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0}
+.notif-badge.urgent{background:var(--red);color:white}
+.notif-badge.new{background:var(--blue);color:white}
+.notif-badge.read{background:var(--gray-200);color:var(--gray-600)}
+.notif-meta{display:flex;gap:14px;margin-top:6px;font-size:12px;color:var(--gray-600);flex-wrap:wrap}
+.notif-body{margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5;border-top:1px solid var(--gray-200);padding-top:8px}
+
+/* SUMMARY */
+.summary-card{background:linear-gradient(135deg,#f8f9ff 0%,#fff8f9 100%);border:1px solid #e0e7ff;border-radius:var(--radius);padding:16px}
+.summary-title{font-weight:700;font-size:14px;color:var(--navy);margin-bottom:8px}
+.summary-text{font-size:13px;line-height:1.6;color:var(--gray-800);white-space:pre-line}
+.stats-row{display:flex;gap:10px;margin-top:12px}
+.stat-box{flex:1;background:white;border-radius:8px;padding:10px;text-align:center;border:1px solid var(--gray-200)}
+.stat-num{font-size:22px;font-weight:800}
+.stat-label{font-size:11px;color:var(--gray-600);margin-top:2px}
+.stat-box.urgent .stat-num{color:var(--red)}
+.stat-box.pending .stat-num{color:#d97706}
+.stat-box.total .stat-num{color:var(--green)}
+
+/* QUICK ACTIONS */
+.quick-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 10px}
+.btn-quick{background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:20px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s;color:var(--gray-800);white-space:nowrap}
+.btn-quick:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+
+/* INPUT */
+.input-area{border-top:1px solid var(--gray-200);padding:14px 16px;display:flex;gap:10px;align-items:center;flex-shrink:0;background:var(--white)}
+.input-area input{flex:1;border:1.5px solid var(--gray-200);border-radius:22px;padding:10px 16px;font-size:14px;outline:none;transition:border-color .15s}
+.input-area input:focus{border-color:var(--red)}
+.btn-send{background:var(--red);color:white;border:none;width:42px;height:42px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.btn-send:hover{background:var(--red-dark)}
+
+/* TYPING */
+.typing-dots{display:flex;gap:4px;align-items:center;padding:4px 0}
+.typing-dots span{width:8px;height:8px;border-radius:50%;background:var(--gray-400);animation:bounce 1.2s infinite}
+.typing-dots span:nth-child(2){animation-delay:.2s}
+.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* LOGIN */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--navy) 0%,#1e3a6e 55%,#0d1b3e 100%);padding:20px;position:relative;overflow:hidden}
+.login-screen::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/svg%3E")}
+.login-card{background:white;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;box-shadow:0 24px 64px rgba(0,0,0,.35);position:relative;z-index:1}
+.login-header{text-align:center;margin-bottom:28px}
+.login-logo-box{width:64px;height:64px;background:linear-gradient(135deg,var(--red) 0%,var(--red-dark) 100%);border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px}
+.login-title{font-size:24px;font-weight:900;color:var(--navy);letter-spacing:-.3px}
+.login-brand{font-size:10px;color:var(--gray-400);margin-top:4px;letter-spacing:.3px}
+.login-sub{font-size:13px;color:var(--gray-600);margin-top:6px}
+.form-group{margin-bottom:16px}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--gray-800);margin-bottom:6px}
+.form-input{width:100%;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);padding:11px 14px;font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
+.form-input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(200,16,46,.1)}
+.btn-primary{width:100%;background:linear-gradient(135deg,var(--red) 0%,var(--red-dark) 100%);color:white;border:none;border-radius:var(--radius-sm);padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:opacity .15s,transform .1s;box-shadow:0 4px 16px rgba(200,16,46,.3)}
+.btn-primary:hover{opacity:.92;transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.demo-link{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--gray-400);cursor:pointer;text-decoration:underline}
+.demo-link:hover{color:var(--red)}
+.error-msg{background:#fde8ec;border:1px solid #f5c2cc;color:var(--red);border-radius:6px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+.divider{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--gray-400);font-size:12px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--gray-200)}
+.back-home{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:16px;font-size:12px;color:var(--gray-400);cursor:pointer;text-decoration:none}
+.back-home:hover{color:var(--navy)}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn .2s ease}
+.modal{background:white;border-radius:var(--radius);padding:28px;width:100%;max-width:420px;box-shadow:var(--shadow-lg)}
+.modal h3{font-size:17px;font-weight:700;margin-bottom:16px;color:var(--navy)}
+.modal-actions{display:flex;gap:10px;margin-top:18px}
+.btn-secondary{flex:1;border:1.5px solid var(--gray-200);background:white;border-radius:var(--radius-sm);padding:10px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-secondary:hover{background:var(--gray-50)}
+.btn-accent{flex:1;background:var(--red);color:white;border:none;border-radius:var(--radius-sm);padding:10px;font-size:14px;font-weight:600;cursor:pointer}
+.btn-accent:hover{background:var(--red-dark)}
+.btn-accent:disabled{background:var(--gray-400);cursor:not-allowed}
+
+@media(max-width:600px){
+  .app-shell{max-width:100%}
+  .msg{max-width:96%}
+  .login-card{padding:28px 20px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const DEMO_NOTIFICATIONS=[
+  {id:"DB-001",subject:"Comunicación de baja de inscripción de oficio provisional",reference_number:"0730050023836",date_received:"2024-01-15T09:30:00",sender:"SUNAT - Intendencia Lima",status:"nuevo",body_text:"Se le comunica que se ha procedido a dar de baja provisional su inscripción en el RUC por causal de oficio. Tiene 10 días hábiles para subsanar presentando la documentación requerida.",has_attachment:true,attachment_name:"baja_inscripcion_provisional.pdf",is_urgent:true},
+  {id:"DB-002",subject:"Esquela de citación - Verificación de obligaciones tributarias 2023",reference_number:"0730050023837",date_received:"2024-01-14T11:00:00",sender:"SUNAT - Div. Auditoría",status:"nuevo",body_text:"Se le cita para el día 25/01/2024 a las 10:00 hrs en las oficinas de SUNAT para verificación de obligaciones tributarias del período fiscal 2023.",has_attachment:true,attachment_name:"esquela_citacion.pdf",is_urgent:true},
+  {id:"DB-003",subject:"Recordatorio de presentación de declaración mensual PDT 621",reference_number:"0730050023838",date_received:"2024-01-10T08:00:00",sender:"SUNAT - Sistema Automático",status:"leido",body_text:"Recuerde que el plazo para presentar su declaración mensual PDT 621 correspondiente a diciembre 2023 vence el 22/01/2024.",has_attachment:false,attachment_name:"",is_urgent:false},
+];
+const DEMO_SUMMARY="⚠️ Tienes 2 notificaciones URGENTES que requieren acción inmediata:\n• Baja provisional de inscripción RUC — Subsanar en 10 días hábiles\n• Citación de auditoría fiscal — Presentarse el 25/01/2024 a las 10:00 hrs\n\n📬 1 notificación informativa sobre vencimiento PDT 621 (ya leída).";
+
+let state={screen:'login',session:null,messages:[],notifications:[],expanded:{}};
+
+function now(){return new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'})}
+function fdate(iso){try{return new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})}catch{return iso.slice(0,10)}}
+
+function render(){
+  const app=document.getElementById('app');
+  if(state.screen==='login'){app.innerHTML=renderLogin()}
+  else{app.innerHTML=`<div class="app-shell">${renderHeader()}${renderChat()}${renderQuickActions()}${renderInput()}</div>`;document.getElementById('chat-area').scrollTop=99999;bindInput()}
+}
+
+function renderLogin(){
+  return`<div class="login-screen"><div class="login-card">
+    <div class="login-header">
+      <div class="login-logo-box">📋</div>
+      <div class="login-title">Dashbot</div>
+      <div class="login-brand">Dashcont Technology System Automatizacion SAC</div>
+      <div class="login-sub">Buzón Electrónico SUNAT Inteligente</div>
+    </div>
+    ${state.error?`<div class="error-msg">⚠️ ${state.error}</div>`:''}
+    <div class="form-group">
+      <label class="form-label">RUC (11 dígitos)</label>
+      <input class="form-input" id="ruc" value="20603448308" maxlength="11" placeholder="20603448308" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Usuario SOL</label>
+      <input class="form-input" id="usuario" value="OLINKYLA" placeholder="OLINKYLA" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña SOL</label>
+      <input class="form-input" type="password" id="password" value="ouscrocha" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" onclick="doLogin(false)">🔐 Ingresar al Buzón SUNAT</button>
+    <div class="divider">o</div>
+    <button class="btn-primary" style="background:linear-gradient(135deg,#1a56a0,#0d3a7a);box-shadow:0 4px 16px rgba(26,86,160,.3)" onclick="doLogin(true)">🧪 Probar con datos de demo</button>
+    <a href="index.html" class="back-home">← Volver a la página principal</a>
+  </div></div>`
+}
+
+function renderHeader(){
+  return`<header class="header">
+    <div class="header-logo-box">📋</div>
+    <div><div class="header-title">Dashbot</div><div class="header-sub">Dashcont Technology System Automatizacion SAC</div></div>
+    <div class="header-right">
+      <div class="sync-dot" title="Sincronizado"></div>
+      ${state.session?.ruc?`<div class="ruc-badge">RUC ${state.session.ruc}</div>`:''}
+      <a href="index.html" class="btn-home">🏠 Inicio</a>
+      <button class="btn-logout" onclick="doLogout()">Salir</button>
+    </div>
+  </header>`
+}
+
+function renderChat(){
+  let html='<div class="chat-area" id="chat-area">';
+  for(const m of state.messages){
+    if(m.role==='bot') html+=`<div class="msg bot"><div class="msg-avatar">🤖</div><div><div class="msg-bubble">${m.html}</div><div class="msg-time">${m.time}</div></div></div>`;
+    else html+=`<div class="msg user"><div class="msg-avatar" style="background:#1a56a0">👤</div><div><div class="msg-bubble">${m.text}</div><div class="msg-time" style="text-align:right">${m.time}</div></div></div>`;
+  }
+  html+='</div>';return html
+}
+
+function renderQuickActions(){
+  const btns=[{l:'🔄 Sincronizar',c:'sync'},{l:'🔴 Urgentes',c:'urgent'},{l:'📊 Resumen',c:'summary'},{l:'📧 Enviar correo',c:'email'}];
+  return`<div class="quick-actions">${btns.map(b=>`<button class="btn-quick" onclick="handleCmd('${b.c}')">${b.l}</button>`).join('')}</div>`
+}
+
+function renderInput(){
+  return`<div class="input-area"><input id="chat-input" placeholder="Escribe un comando o pregunta..."><button class="btn-send" onclick="sendMsg()">➤</button></div>`
+}
+
+function bindInput(){
+  const inp=document.getElementById('chat-input');
+  if(inp) inp.addEventListener('keydown',e=>{ if(e.key==='Enter') sendMsg(); });
+}
+
+function renderNotifCard(n){
+  const icon=n.is_urgent?'🔴':n.status==='leido'?'📭':'📬';
+  const badge=n.is_urgent?'urgent':n.status==='nuevo'?'new':'read';
+  const badgeText=n.is_urgent?'⚠️ URGENTE':n.status==='nuevo'?'● Nuevo':'✓ Leído';
+  const exp=state.expanded[n.id];
+  return`<div class="notif-card${n.is_urgent?' urgent':''}${n.status==='leido'?' read':''}" onclick="toggleCard('${n.id}')">
+    <div class="notif-card-header">
+      <span class="notif-icon">${icon}</span>
+      <span class="notif-subject">${n.subject}</span>
+      <span class="notif-badge ${badge}">${badgeText}</span>
+    </div>
+    <div class="notif-meta">
+      <span>📅 ${fdate(n.date_received)}</span>
+      ${n.reference_number?`<span>🔢 ${n.reference_number}</span>`:''}
+      ${n.has_attachment?`<span>📎 Adjunto</span>`:''}
+      <span>🏛️ ${n.sender}</span>
+    </div>
+    ${exp?`<div class="notif-body">
+      <p style="margin-bottom:10px">${n.body_text}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${n.has_attachment?`<button class="btn-quick" style="border-color:#1a56a0;color:#1a56a0" onclick="event.stopPropagation();alert('📎 Archivo: ${n.attachment_name}\\nEn el sistema real se descarga directamente de SUNAT.')">📥 Descargar ${n.attachment_name}</button>`:''}
+        ${n.status==='nuevo'?`<button class="btn-quick" onclick="event.stopPropagation();markRead('${n.id}')">✓ Marcar como leído</button>`:''}
+      </div>
+    </div>`:''}
+  </div>`
+}
+
+function toggleCard(id){
+  state.expanded[id]=!state.expanded[id];
+  const cards=document.querySelectorAll('.notif-card');
+  // Full re-render to update expanded state
+  const area=document.getElementById('chat-area');
+  if(area){ area.outerHTML=renderChat(); document.getElementById('chat-area').scrollTop=99999; }
+}
+
+function markRead(id){
+  state.notifications=state.notifications.map(n=>n.id===id?{...n,status:'leido'}:n);
+  addBot('✓ Notificación marcada como leída.');render();
+}
+
+function doLogin(demo){
+  state.error='';
+  const ruc=demo?'20603448308':(document.getElementById('ruc')?.value||'');
+  if(!demo&&(ruc.length!==11||!/^\d+$/.test(ruc))){ state.error='El RUC debe tener exactamente 11 dígitos numéricos.';render();return; }
+  state.session={ruc,demo};state.screen='chat';state.messages=[];
+  addBot(`¡Hola! Soy <strong>Dashbot</strong> 👋<br>Conectado con RUC <strong>${ruc}</strong>.${demo?' <span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">MODO DEMO</span>':''}<br><br>Comandos disponibles: <em>sincronizar</em>, <em>urgentes</em>, <em>resumen</em>, <em>enviar correo</em>`);
+  render();
+  setTimeout(()=>{addBot('<div class="typing-dots"><span></span><span></span><span></span></div>');render();setTimeout(doSync,1400)},600);
+}
+
+function doLogout(){state={screen:'login',session:null,messages:[],notifications:[],expanded:{}};render()}
+
+function doSync(){
+  state.notifications=DEMO_NOTIFICATIONS;
+  const urgent=DEMO_NOTIFICATIONS.filter(n=>n.is_urgent).length;
+  const nuevo=DEMO_NOTIFICATIONS.filter(n=>n.status==='nuevo').length;
+  addBot(`<div class="summary-card">
+    <div class="summary-title">📊 Resumen Ejecutivo — RUC ${state.session.ruc}</div>
+    <div class="stats-row">
+      <div class="stat-box urgent"><div class="stat-num">${urgent}</div><div class="stat-label">URGENTES</div></div>
+      <div class="stat-box pending"><div class="stat-num">${nuevo}</div><div class="stat-label">PENDIENTES</div></div>
+      <div class="stat-box total"><div class="stat-num">${DEMO_NOTIFICATIONS.length}</div><div class="stat-label">TOTAL</div></div>
+    </div>
+    <div class="summary-text" style="margin-top:12px">${DEMO_SUMMARY}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn-quick" style="border-color:#c8102e;color:#c8102e" onclick="showEmailModal()">📧 Enviar resumen por correo</button>
+      <button class="btn-quick" style="border-color:#25d366;color:#25d366" onclick="alert('WhatsApp disponible en el plan Profesional de Dashbot.')">💬 Enviar por WhatsApp</button>
+    </div>
+  </div>`);
+  const cards=DEMO_NOTIFICATIONS.sort((a,b)=>(b.is_urgent?1:0)-(a.is_urgent?1:0)).map(renderNotifCard).join('');
+  addBot(`<div><p style="margin-bottom:10px;font-weight:600;color:var(--navy)">📬 3 notificaciones sincronizadas del buzón SUNAT:</p><div class="notif-list">${cards}</div></div>`);
+  addBot(`🕐 Última sincronización: <strong>${new Date().toLocaleString('es-PE')}</strong>`);
+  render();
+}
+
+function showEmailModal(){
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal">
+    <h3>📧 Enviar Resumen por Correo</h3>
+    <div class="form-group">
+      <label class="form-label">Correo electrónico destino</label>
+      <input class="form-input" id="modal-email" type="email" placeholder="contador@estudio.com" value="${state.session?.ruc==='20603448308'?'arnolalexisjimenezalcala@gmail.com':''}">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+      <button class="btn-accent" onclick="sendEmail()">📤 Enviar resumen</button>
+    </div>
+  </div>`;
+  overlay.addEventListener('click',e=>{ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+function sendEmail(){
+  const email=document.getElementById('modal-email')?.value;
+  if(!email){ alert('Ingresa un correo válido'); return; }
+  document.querySelector('.modal-overlay')?.remove();
+  addBot(`✅ Resumen ejecutivo enviado exitosamente a <strong>${email}</strong>.<br><small style="color:var(--gray-600)">En producción se envía un correo HTML profesional con tabla de notificaciones urgentes y pendientes.</small>`);
+  render();
+}
+
+function handleCmd(cmd){
+  if(cmd==='sync'){ addUser('🔄 Sincronizar notificaciones'); addBot('<div class="typing-dots"><span></span><span></span><span></span></div>'); render(); setTimeout(doSync,1400); }
+  else if(cmd==='urgent'){
+    addUser('🔴 Ver notificaciones urgentes');
+    const u=state.notifications.filter(n=>n.is_urgent);
+    if(!u.length){ addBot('✅ No tienes notificaciones urgentes en este momento. ¡Todo tranquilo!'); }
+    else{ addBot(`<div><p style="margin-bottom:8px;font-weight:600;color:#c8102e">🔴 ${u.length} notificación(es) urgente(s):</p><div class="notif-list">${u.map(renderNotifCard).join('')}</div></div>`); }
+    render();
+  }
+  else if(cmd==='email'){ addUser('📧 Enviar resumen por correo'); showEmailModal(); }
+  else if(cmd==='summary'){
+    addUser('📊 Ver resumen del buzón');
+    const urgent=state.notifications.filter(n=>n.is_urgent).length;
+    const nuevo=state.notifications.filter(n=>n.status==='nuevo').length;
+    addBot(`<div>📊 <strong style="color:var(--navy)">Estado del buzón SUNAT — RUC ${state.session?.ruc}</strong><br><br>🔴 Urgentes: <strong>${urgent}</strong><br>📬 Sin leer: <strong>${nuevo}</strong><br>📋 Total: <strong>${state.notifications.length}</strong></div>`);
+    render();
+  }
+}
+
+function sendMsg(){
+  const inp=document.getElementById('chat-input');
+  if(!inp?.value.trim()) return;
+  const t=inp.value.trim();inp.value='';
+  const tl=t.toLowerCase();
+  if(tl.includes('sincroniz')||tl.includes('actualiz')||tl.includes('refres')) handleCmd('sync');
+  else if(tl.includes('urgent')||tl.includes('important')) handleCmd('urgent');
+  else if(tl.includes('correo')||tl.includes('email')||tl.includes('enviar')) handleCmd('email');
+  else if(tl.includes('resumen')||tl.includes('total')||tl.includes('cuántas')) handleCmd('summary');
+  else if(tl.includes('hola')||tl.includes('ayuda')){
+    addUser(t);
+    addBot(`¡Hola! Soy <strong>Dashbot</strong>, tu asistente de buzón SUNAT. Puedo ayudarte con:<br><br>🔄 <strong>Sincronizar</strong> — Actualizar notificaciones<br>🔴 <strong>Urgentes</strong> — Ver solo las prioritarias<br>📊 <strong>Resumen</strong> — Estado general<br>📧 <strong>Enviar correo</strong> — Resumen por email`);
+    render();
+  }
+  else{ addUser(t); addBot('No entendí eso. Prueba: <em>sincronizar</em>, <em>urgentes</em>, <em>resumen</em> o <em>enviar correo</em>.'); render(); }
+}
+
+function addBot(html){state.messages.push({role:'bot',html,time:now()})}
+function addUser(text){state.messages.push({role:'user',text,time:now()})}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.env
+*.db
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+.cache/
+frontend/dist/
+.cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Playwright
+/ms-playwright/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude
+.claude/

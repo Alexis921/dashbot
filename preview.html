@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOT SUNAT - Preview</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --red:#c8102e;--red-dark:#a00d24;--red-light:#fde8ec;
+  --yellow:#f4c430;--green:#1a7a4a;--blue:#1a56a0;
+  --gray-50:#f8f9fa;--gray-100:#f1f3f5;--gray-200:#e9ecef;
+  --gray-400:#ced4da;--gray-600:#6c757d;--gray-800:#343a40;
+  --white:#fff;--shadow:0 4px 16px rgba(0,0,0,.10);--shadow-lg:0 8px 32px rgba(0,0,0,.14);
+  --radius:12px;--radius-sm:8px;
+}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--gray-100);color:var(--gray-800);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.app-shell{display:flex;flex-direction:column;height:100vh;max-width:960px;width:100%;margin:0 auto;background:var(--white);box-shadow:var(--shadow-lg)}
+
+/* HEADER */
+.header{background:var(--red);color:white;padding:14px 20px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.header-logo{font-size:28px}
+.header-title{font-size:18px;font-weight:700}
+.header-sub{font-size:12px;opacity:.85;margin-top:2px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.ruc-badge{background:rgba(255,255,255,.20);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:600}
+.btn-logout{background:transparent;border:1px solid rgba(255,255,255,.45);color:white;border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer}
+
+/* CHAT */
+.chat-area{flex:1;overflow-y:auto;padding:20px 20px 8px;display:flex;flex-direction:column;gap:14px}
+.msg{display:flex;gap:10px;max-width:88%;animation:fadeIn .25s ease}
+.msg.bot{align-self:flex-start}
+.msg.user{align-self:flex-end;flex-direction:row-reverse}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.msg-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;margin-top:2px}
+.msg.bot .msg-avatar{background:var(--red)}
+.msg.user .msg-avatar{background:var(--blue)}
+.msg-bubble{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:0 var(--radius) var(--radius) var(--radius);padding:10px 14px;font-size:14px;line-height:1.55}
+.msg.user .msg-bubble{background:var(--blue);color:white;border-color:var(--blue);border-radius:var(--radius) 0 var(--radius) var(--radius)}
+.msg-time{font-size:11px;opacity:.55;margin-top:4px}
+
+/* SUMMARY */
+.summary-card{background:linear-gradient(135deg,#fff8f9 0%,#fef9ec 100%);border:1px solid #f0c0c8;border-radius:var(--radius);padding:16px;margin-top:4px}
+.summary-title{font-weight:700;font-size:14px;color:var(--red);margin-bottom:8px}
+.summary-text{font-size:13px;line-height:1.6;color:var(--gray-800);white-space:pre-line}
+.stats-row{display:flex;gap:10px;margin-top:12px}
+.stat-box{flex:1;background:white;border-radius:8px;padding:10px;text-align:center;border:1px solid var(--gray-200)}
+.stat-num{font-size:22px;font-weight:800}
+.stat-label{font-size:11px;color:var(--gray-600);margin-top:2px}
+.stat-box.urgent .stat-num{color:var(--red)}
+.stat-box.pending .stat-num{color:var(--yellow)}
+.stat-box.total .stat-num{color:var(--green)}
+
+/* NOTIF CARDS */
+.notif-list{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.notif-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:12px 14px;cursor:pointer;transition:box-shadow .15s;border-left:4px solid var(--gray-400)}
+.notif-card:hover{box-shadow:var(--shadow)}
+.notif-card.urgent{border-left-color:var(--red);background:#fff8f8}
+.notif-card.read{opacity:.65}
+.notif-card-header{display:flex;align-items:flex-start;gap:8px}
+.notif-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.notif-subject{font-weight:600;font-size:13px;color:var(--gray-800);flex:1;line-height:1.4}
+.notif-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0}
+.notif-badge.urgent{background:var(--red);color:white}
+.notif-badge.new{background:var(--blue);color:white}
+.notif-badge.read{background:var(--gray-200);color:var(--gray-600)}
+.notif-meta{display:flex;gap:14px;margin-top:6px;font-size:12px;color:var(--gray-600)}
+.notif-body{margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5;border-top:1px solid var(--gray-200);padding-top:8px}
+
+/* QUICK ACTIONS */
+.quick-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 16px 10px}
+.btn-quick{background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:20px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s;color:var(--gray-800)}
+.btn-quick:hover{border-color:var(--red);color:var(--red);background:var(--red-light)}
+
+/* INPUT */
+.input-area{border-top:1px solid var(--gray-200);padding:14px 16px;display:flex;gap:10px;align-items:center;flex-shrink:0;background:var(--white)}
+.input-area input{flex:1;border:1.5px solid var(--gray-200);border-radius:22px;padding:10px 16px;font-size:14px;outline:none;transition:border-color .15s}
+.input-area input:focus{border-color:var(--red)}
+.btn-send{background:var(--red);color:white;border:none;width:42px;height:42px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.btn-send:hover{background:var(--red-dark)}
+
+/* TYPING */
+.typing-dots{display:flex;gap:4px;align-items:center;padding:4px 0}
+.typing-dots span{width:8px;height:8px;border-radius:50%;background:var(--gray-400);animation:bounce 1.2s infinite}
+.typing-dots span:nth-child(2){animation-delay:.2s}
+.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* LOGIN */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#c8102e 0%,#8b0d20 60%,#1a1a2e 100%);padding:20px}
+.login-card{background:white;border-radius:16px;padding:40px 36px;width:100%;max-width:420px;box-shadow:var(--shadow-lg)}
+.login-header{text-align:center;margin-bottom:28px}
+.login-logo{font-size:52px}
+.login-title{font-size:22px;font-weight:800;color:var(--red);margin-top:8px}
+.login-sub{font-size:13px;color:var(--gray-600);margin-top:4px}
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--gray-800);margin-bottom:6px}
+.form-input{width:100%;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);padding:11px 14px;font-size:14px;outline:none;transition:border-color .15s}
+.form-input:focus{border-color:var(--red);box-shadow:0 0 0 3px rgba(200,16,46,.1)}
+.btn-primary{width:100%;background:var(--red);color:white;border:none;border-radius:var(--radius-sm);padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;transition:background .15s}
+.btn-primary:hover{background:var(--red-dark)}
+.demo-link{display:block;text-align:center;margin-top:14px;font-size:12px;color:var(--gray-600);cursor:pointer;text-decoration:underline}
+.demo-link:hover{color:var(--red)}
+
+.notif-info{background:#e8f4ff;border:1px solid #b8daff;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#1a56a0}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+// ── Datos de demostración ─────────────────────────────────────────────────
+const DEMO_NOTIFICATIONS = [
+  {
+    id:"SUNAT-001",subject:"Comunicación de baja de inscripción de oficio provisional",
+    reference_number:"0730050023836",date_received:"2024-01-15T09:30:00",
+    sender:"SUNAT - Intendencia Lima",status:"nuevo",
+    body_text:"Se le comunica que se ha procedido a dar de baja provisional su inscripción en el RUC por causal de oficio. Tiene 10 días hábiles para subsanar.",
+    has_attachment:true,attachment_name:"baja_inscripcion_provisional.pdf",is_urgent:true
+  },
+  {
+    id:"SUNAT-002",subject:"Esquela de citación - Verificación de obligaciones tributarias",
+    reference_number:"0730050023837",date_received:"2024-01-14T11:00:00",
+    sender:"SUNAT - Div. Auditoría",status:"nuevo",
+    body_text:"Se le cita para el día 25/01/2024 a las 10:00 hrs en las oficinas de SUNAT para verificación de obligaciones tributarias del período 2023.",
+    has_attachment:true,attachment_name:"esquela_citacion.pdf",is_urgent:true
+  },
+  {
+    id:"SUNAT-003",subject:"Recordatorio de presentación de declaración mensual PDT 621",
+    reference_number:"0730050023838",date_received:"2024-01-10T08:00:00",
+    sender:"SUNAT - Sistema Automático",status:"leido",
+    body_text:"Recuerde que el plazo para presentar su declaración mensual PDT 621 correspondiente a diciembre 2023 vence el 22/01/2024.",
+    has_attachment:false,attachment_name:"",is_urgent:false
+  },
+];
+
+const DEMO_SUMMARY = "⚠️ Tienes 2 notificaciones URGENTES que requieren acción inmediata:\n• Baja provisional de inscripción RUC — Subsanar en 10 días hábiles\n• Citación de auditoría — Presentarse el 25/01/2024\n\n📬 1 notificación informativa sobre vencimiento PDT 621 (ya leída).";
+
+// ── State ─────────────────────────────────────────────────────────────────
+let state = { screen: 'login', session: null, messages: [], notifications: [], expanded: {} };
+
+function now(){ return new Date().toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'}); }
+function fdate(iso){ try{ return new Date(iso).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'}); }catch{ return iso.slice(0,10); } }
+
+// ── Render ────────────────────────────────────────────────────────────────
+function render(){
+  const app = document.getElementById('app');
+  if(state.screen === 'login'){
+    app.innerHTML = renderLogin();
+  } else {
+    app.innerHTML = `<div class="app-shell">${renderHeader()}${renderChat()}${renderQuickActions()}${renderInput()}</div>`;
+    document.getElementById('chat-area').scrollTop = 99999;
+    attachHandlers();
+  }
+}
+
+function renderLogin(){
+  return `<div class="login-screen"><div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">📋</div>
+      <div class="login-title">BOT SUNAT</div>
+      <div class="login-sub">Buzón Electrónico Inteligente</div>
+    </div>
+    <div class="notif-info">
+      🧪 Esta es una <strong>vista previa</strong> del chat.<br>
+      El sistema real se conecta al buzón SUNAT con Playwright.
+    </div>
+    <div class="form-group">
+      <label class="form-label">RUC (11 dígitos)</label>
+      <input class="form-input" id="ruc" value="20603448308" maxlength="11" placeholder="20603448308">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Usuario SOL</label>
+      <input class="form-input" id="usuario" value="OLINKYLA" placeholder="OLINKYLA">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contraseña SOL</label>
+      <input class="form-input" type="password" id="password" value="ouscrocha" placeholder="••••••••">
+    </div>
+    <button class="btn-primary" onclick="doLogin(false)">🔐 Ingresar al Buzón</button>
+    <span class="demo-link" onclick="doLogin(true)">🧪 Probar con datos de demostración</span>
+  </div></div>`;
+}
+
+function renderHeader(){
+  return `<header class="header">
+    <div class="header-logo">📋</div>
+    <div><div class="header-title">BOT SUNAT</div><div class="header-sub">Buzón Electrónico Inteligente</div></div>
+    <div class="header-right">
+      <div class="ruc-badge">RUC ${state.session?.ruc||''}</div>
+      <button class="btn-logout" onclick="doLogout()">Salir</button>
+    </div>
+  </header>`;
+}
+
+function renderChat(){
+  let html = '<div class="chat-area" id="chat-area">';
+  for(const m of state.messages){
+    if(m.role==='bot'){
+      html += `<div class="msg bot"><div class="msg-avatar">🤖</div><div><div class="msg-bubble">${m.html}</div><div class="msg-time">${m.time}</div></div></div>`;
+    } else {
+      html += `<div class="msg user"><div class="msg-avatar" style="background:#1a56a0">👤</div><div><div class="msg-bubble">${m.text}</div><div class="msg-time" style="text-align:right">${m.time}</div></div></div>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderQuickActions(){
+  const btns = [
+    {l:'🔄 Sincronizar',c:'sync'},
+    {l:'🔴 Urgentes',c:'urgent'},
+    {l:'📊 Resumen',c:'summary'},
+    {l:'📧 Enviar correo',c:'email'},
+  ];
+  return `<div class="quick-actions">${btns.map(b=>`<button class="btn-quick" onclick="handleCmd('${b.c}')">${b.l}</button>`).join('')}</div>`;
+}
+
+function renderInput(){
+  return `<div class="input-area">
+    <input id="chat-input" placeholder="Escribe un comando o pregunta..." onkeydown="if(event.key==='Enter')sendMsg()">
+    <button class="btn-send" onclick="sendMsg()">➤</button>
+  </div>`;
+}
+
+function attachHandlers(){ /* delegated via onclick */ }
+
+// ── Actions ───────────────────────────────────────────────────────────────
+function doLogin(demo){
+  const ruc = demo ? '20603448308' : (document.getElementById('ruc')?.value||'');
+  if(!demo && (ruc.length!==11||!/^\d+$/.test(ruc))){ alert('RUC debe tener 11 dígitos'); return; }
+  state.session = { ruc, demo };
+  state.screen = 'chat';
+  state.messages = [];
+  addBot(`¡Hola! Soy tu asistente BOT SUNAT 👋<br>Conectado con RUC <strong>${ruc}</strong>.${demo?' <span style="color:#f4c430">⚠️ Modo demo</span>':''}<br><br>Dime qué necesitas:<br>• <em>Sincronizar notificaciones</em><br>• <em>Ver urgentes</em><br>• <em>Enviar resumen por correo</em>`);
+  render();
+  setTimeout(()=>{ addBot('⏳ Sincronizando con buzón SUNAT...'); render(); setTimeout(doSync, 1200); }, 500);
+}
+
+function doLogout(){ state = { screen:'login', session:null, messages:[], notifications:[], expanded:{} }; render(); }
+
+function doSync(){
+  state.notifications = DEMO_NOTIFICATIONS;
+  const urgent = DEMO_NOTIFICATIONS.filter(n=>n.is_urgent).length;
+  const nuevo = DEMO_NOTIFICATIONS.filter(n=>n.status==='nuevo').length;
+
+  addBot(`<div class="summary-card">
+    <div class="summary-title">📊 Resumen Ejecutivo</div>
+    <div class="stats-row">
+      <div class="stat-box urgent"><div class="stat-num">${urgent}</div><div class="stat-label">URGENTES</div></div>
+      <div class="stat-box pending"><div class="stat-num">${nuevo}</div><div class="stat-label">PENDIENTES</div></div>
+      <div class="stat-box total"><div class="stat-num">${DEMO_NOTIFICATIONS.length}</div><div class="stat-label">TOTAL</div></div>
+    </div>
+    <div class="summary-text" style="margin-top:12px">${DEMO_SUMMARY}</div>
+    <button class="btn-quick" style="margin-top:12px;border-color:#c8102e;color:#c8102e" onclick="handleCmd('email')">📧 Enviar resumen por correo</button>
+  </div>`);
+
+  const cards = DEMO_NOTIFICATIONS.sort((a,b)=>(b.is_urgent?1:0)-(a.is_urgent?1:0))
+    .map(n => renderNotifCard(n)).join('');
+  addBot(`<div><p style="margin-bottom:10px;font-weight:600">📬 3 notificaciones sincronizadas:</p><div class="notif-list">${cards}</div></div>`);
+  addBot(`🕐 Última sincronización: ${new Date().toLocaleString('es-PE')}`);
+  render();
+}
+
+function renderNotifCard(n){
+  const icon = n.is_urgent?'🔴':n.status==='leido'?'📭':'📬';
+  const badge = n.is_urgent?'urgent':n.status==='nuevo'?'new':'read';
+  const badgeText = n.is_urgent?'⚠️ URGENTE':n.status==='nuevo'?'● Nuevo':'✓ Leído';
+  const exp = state.expanded[n.id];
+  return `<div class="notif-card${n.is_urgent?' urgent':''}${n.status==='leido'?' read':''}" onclick="toggleCard('${n.id}')">
+    <div class="notif-card-header">
+      <span class="notif-icon">${icon}</span>
+      <span class="notif-subject">${n.subject}</span>
+      <span class="notif-badge ${badge}">${badgeText}</span>
+    </div>
+    <div class="notif-meta">
+      <span>📅 ${fdate(n.date_received)}</span>
+      ${n.reference_number?`<span>🔢 ${n.reference_number}</span>`:''}
+      ${n.has_attachment?'<span>📎 Adjunto</span>':''}
+      <span>🏛️ ${n.sender}</span>
+    </div>
+    ${exp?`<div class="notif-body">
+      <p style="margin-bottom:8px">${n.body_text}</p>
+      ${n.has_attachment?`<button class="btn-quick" onclick="event.stopPropagation();alert('Adjunto: ${n.attachment_name}')">📥 Descargar ${n.attachment_name}</button>`:''}
+    </div>`:''}
+  </div>`;
+}
+
+function toggleCard(id){
+  state.expanded[id] = !state.expanded[id];
+  // Re-render solo las tarjetas actualizando innerHTML del chat
+  const area = document.getElementById('chat-area');
+  if(area){ area.innerHTML = renderChat().replace('<div class="chat-area" id="chat-area">','').replace(/<\/div>$/,''); render(); }
+}
+
+function handleCmd(cmd){
+  if(cmd==='sync'){ addUser('🔄 Sincronizar notificaciones'); addBot('⏳ Sincronizando con buzón SUNAT...'); render(); setTimeout(doSync,1200); }
+  else if(cmd==='urgent'){
+    addUser('🔴 Ver urgentes');
+    const u = state.notifications.filter(n=>n.is_urgent);
+    if(!u.length){ addBot('✅ No tienes notificaciones urgentes en este momento.'); }
+    else { addBot(`<div><p style="margin-bottom:8px;font-weight:600">🔴 ${u.length} notificación(es) urgente(s):</p><div class="notif-list">${u.map(renderNotifCard).join('')}</div></div>`); }
+    render();
+  }
+  else if(cmd==='summary'){
+    addUser('📊 Ver resumen');
+    const urgent=state.notifications.filter(n=>n.is_urgent).length;
+    const nuevo=state.notifications.filter(n=>n.status==='nuevo').length;
+    addBot(`<div>📊 <strong>Estado actual del buzón SUNAT:</strong><br><br>🔴 Urgentes: <strong>${urgent}</strong><br>📬 Sin leer: <strong>${nuevo}</strong><br>📋 Total: <strong>${state.notifications.length}</strong></div>`);
+    render();
+  }
+  else if(cmd==='email'){
+    addUser('📧 Enviar resumen por correo');
+    const email = prompt('Ingresa el correo destinatario:','contador@empresa.com');
+    if(email){ addBot(`✅ Resumen enviado a <strong>${email}</strong><br><small>(En producción requiere configurar SMTP en el backend)</small>`); render(); }
+  }
+}
+
+function sendMsg(){
+  const inp = document.getElementById('chat-input');
+  if(!inp?.value.trim()) return;
+  const t = inp.value.trim().toLowerCase();
+  inp.value = '';
+  if(t.includes('sincroniz')||t.includes('actualiz')) handleCmd('sync');
+  else if(t.includes('urgent')) handleCmd('urgent');
+  else if(t.includes('correo')||t.includes('email')) handleCmd('email');
+  else if(t.includes('resumen')||t.includes('total')) handleCmd('summary');
+  else { addUser(inp.value||t); addBot('Prueba: <em>sincronizar</em>, <em>urgentes</em>, <em>resumen</em> o <em>enviar correo</em>'); render(); }
+}
+
+function addBot(html){ state.messages.push({role:'bot',html,time:now()}); }
+function addUser(text){ state.messages.push({role:'user',text,time:now()}); }
+
+// Init
+render();
+</script>
+</body>
+</html>
