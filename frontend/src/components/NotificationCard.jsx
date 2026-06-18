@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiInterpretNotification, apiDownloadPdf } from '../api'
 
 function formatDate(iso) {
   if (!iso) return ''
@@ -9,12 +10,43 @@ function formatDate(iso) {
   } catch { return iso.slice(0, 10) }
 }
 
-export default function NotificationCard({ notif, onMarkRead }) {
+export default function NotificationCard({ notif, onMarkRead, sessionId }) {
   const [expanded, setExpanded] = useState(false)
+  const [interpretation, setInterpretation] = useState(null)
+  const [loadingAI, setLoadingAI] = useState(false)
+  const [loadingPdf, setLoadingPdf] = useState(false)
+  const [aiError, setAiError] = useState(null)
 
   const icon = notif.is_urgent ? '🔴' : notif.status === 'leido' ? '📭' : '📬'
   const badge = notif.is_urgent ? 'urgent' : notif.status === 'nuevo' ? 'new' : 'read'
   const badgeText = notif.is_urgent ? '⚠️ URGENTE' : notif.status === 'nuevo' ? '● Nuevo' : '✓ Leído'
+
+  async function handleInterpret(e) {
+    e.stopPropagation()
+    if (interpretation) { setInterpretation(null); return }
+    setLoadingAI(true)
+    setAiError(null)
+    try {
+      const data = await apiInterpretNotification(sessionId, notif)
+      setInterpretation(data.interpretation)
+    } catch (err) {
+      setAiError(err.message)
+    } finally {
+      setLoadingAI(false)
+    }
+  }
+
+  async function handleDownloadPdf(e) {
+    e.stopPropagation()
+    setLoadingPdf(true)
+    try {
+      await apiDownloadPdf(sessionId, notif.id, notif.attachment_name)
+    } catch (err) {
+      alert(`⚠️ ${err.message}`)
+    } finally {
+      setLoadingPdf(false)
+    }
+  }
 
   return (
     <div
@@ -35,23 +67,30 @@ export default function NotificationCard({ notif, onMarkRead }) {
       </div>
 
       {expanded && (
-        <div className="notif-body">
+        <div className="notif-body" onClick={(e) => e.stopPropagation()}>
           {notif.body_text && <p style={{ marginBottom: 10 }}>{notif.body_text}</p>}
-          {notif.summary && (
-            <p style={{ fontStyle: 'italic', color: '#444', marginBottom: 10 }}>
-              💡 <strong>Resumen:</strong> {notif.summary}
-            </p>
-          )}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: interpretation ? 12 : 0 }}>
+            <button
+              className="btn-quick"
+              style={{ borderColor: 'var(--green)', color: 'var(--green)', background: loadingAI ? 'var(--green-light)' : '' }}
+              onClick={handleInterpret}
+              disabled={loadingAI}
+            >
+              {loadingAI ? '⏳ Analizando...' : interpretation ? '🤖 Ocultar análisis' : '🤖 Interpretar con IA'}
+            </button>
+
             {notif.has_attachment && (
               <button
                 className="btn-quick"
-                style={{ borderColor: '#1a56a0', color: '#1a56a0' }}
-                onClick={(e) => { e.stopPropagation(); alert('Descarga disponible cuando se conecte a SUNAT real.') }}
+                style={{ borderColor: 'var(--navy)', color: 'var(--navy)' }}
+                onClick={handleDownloadPdf}
+                disabled={loadingPdf}
               >
-                📥 Descargar {notif.attachment_name || 'adjunto'}
+                {loadingPdf ? '⏳ Descargando...' : `📥 Descargar ${notif.attachment_name || 'adjunto'}`}
               </button>
             )}
+
             {notif.status === 'nuevo' && (
               <button
                 className="btn-quick"
@@ -61,6 +100,32 @@ export default function NotificationCard({ notif, onMarkRead }) {
               </button>
             )}
           </div>
+
+          {aiError && (
+            <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginTop: 8 }}>
+              ⚠️ {aiError}
+            </div>
+          )}
+
+          {interpretation && (
+            <div style={{
+              background: 'linear-gradient(135deg, #e6f7ee, #f0fdf4)',
+              border: '1px solid #b3e6cc',
+              borderLeft: '4px solid var(--green)',
+              borderRadius: 10,
+              padding: '14px 16px',
+              fontSize: 13,
+              color: '#1d2939',
+              lineHeight: 1.7,
+              marginTop: 4,
+              whiteSpace: 'pre-line',
+            }}>
+              <div style={{ fontWeight: 700, color: 'var(--green-dk)', marginBottom: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                🤖 Análisis IA — Gemini
+              </div>
+              {interpretation}
+            </div>
+          )}
         </div>
       )}
     </div>

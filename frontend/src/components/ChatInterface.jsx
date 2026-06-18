@@ -145,7 +145,7 @@ export default function ChatInterface({ session, onLogout }) {
               {[...(data.notifications || [])]
                 .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
                 .map((n) => (
-                  <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} />
+                  <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} sessionId={session.session_id} />
                 ))}
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function ChatInterface({ session, onLogout }) {
       addUser(text)
       const u = notifications.filter((n) => n.is_urgent)
       if (!u.length) addBot('✅ No tienes notificaciones urgentes en este momento.')
-      else addBot(<div><p style={{ marginBottom: 8, fontWeight: 600, color: '#c8102e' }}>🔴 {u.length} urgente(s):</p><div className="notif-list">{u.map((n) => <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} />)}</div></div>)
+      else addBot(<div><p style={{ marginBottom: 8, fontWeight: 600, color: '#c8102e' }}>🔴 {u.length} urgente(s):</p><div className="notif-list">{u.map((n) => <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} sessionId={session.session_id} />)}</div></div>)
     } else if (t.includes('correo') || t.includes('email') || t.includes('enviar')) {
       addUser(text); setShowEmailModal(true)
     } else if (t.includes('resumen') || t.includes('total') || t.includes('cuántas')) {

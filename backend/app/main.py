@@ -10,7 +10,8 @@ from typing import Optional, List
 from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import httpx
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
@@ -20,7 +21,7 @@ load_dotenv()
 from app.database import get_db, init_db, Notification, SyncLog
 from app.scraper import scrape_sunat_notifications, get_demo_notifications
 from app.email_service import send_email_summary
-from app.ai_summary import generate_ai_summary
+from app.ai_summary import generate_ai_summary, generate_notification_interpretation
 
 app = FastAPI(title="BOT SUNAT", version="1.0.0")
 
@@ -62,6 +63,11 @@ class EmailRequest(BaseModel):
 class MarkReadRequest(BaseModel):
     session_id: str
     notification_ids: List[str]
+
+
+class InterpretRequest(BaseModel):
+    session_id: str
+    notification: dict
 
 
 # ── Startup ───────────────────────────────────────────────────────────────────
@@ -271,6 +277,70 @@ async def last_sync(ruc: str, db: Session = Depends(get_db)):
     if not log:
         return {"last_sync": None}
     return {"last_sync": log.synced_at.isoformat(), "count_new": log.count_new}
+
+
+@app.post("/api/interpret")
+async def interpret_notification(req: InterpretRequest):
+    """Interpreta una notificación SUNAT con IA."""
+    session = _sessions.get(req.session_id)
+    if not session:
+        raise HTTPException(401, "Sesión no válida.")
+    interpretation = await generate_notification_interpretation(req.notification)
+    return {"success": True, "interpretation": interpretation}
+
+
+@app.get("/api/notifications/{notif_id}/pdf")
+async def download_pdf(notif_id: str, session_id: str, db: Session = Depends(get_db)):
+    """Descarga el PDF adjunto de una notificación SUNAT."""
+    session = _sessions.get(session_id)
+    if not session:
+        raise HTTPException(401, "Sesión no válida.")
+
+    notif = db.query(Notification).filter(Notification.id == notif_id).first()
+    if not notif:
+        raise HTTPException(404, "Notificación no encontrada.")
+    if not notif.has_attachment:
+        raise HTTPException(404, "Esta notificación no tiene adjunto.")
+
+    # Modo demo: no hay PDF real disponible
+    if session.get("demo_mode") or notif_id.startswith("SUNAT-DEMO"):
+        raise HTTPException(
+            404,
+            "PDF disponible solo con conexión real a SUNAT. "
+            "Ingresa con tus credenciales SOL para descargar adjuntos."
+        )
+
+    # Intentar descargar el PDF de SUNAT usando la sesión activa
+    # El ID de SUNAT generalmente está en el formato S-RUC-N
+    try:
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            # Construir URL de descarga de SUNAT
+            pdf_url = (
+                f"https://www.sunat.gob.pe/ol-ti-itbuzonelectronico/bin/"
+                f"descargarAdjunto.do?idNotificacion={notif_id}"
+            )
+            resp = await client.get(
+                pdf_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+                    "Referer": "https://www.sunat.gob.pe/sol.html",
+                },
+            )
+            if resp.status_code == 200 and b"PDF" in resp.content[:8]:
+                filename = notif.attachment_name or f"sunat_{notif_id}.pdf"
+                return StreamingResponse(
+                    iter([resp.content]),
+                    media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
+    except Exception:
+        pass
+
+    raise HTTPException(
+        503,
+        "No se pudo descargar el PDF de SUNAT en este momento. "
+        "Intenta descargarlo directamente desde el portal SOL."
+    )
 
 
 @app.delete("/api/session/{session_id}")

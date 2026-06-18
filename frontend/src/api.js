@@ -47,3 +47,29 @@ export async function apiMarkRead(session_id, notification_ids) {
 export async function apiLogout(session_id) {
   await fetch(`${BASE}/api/session/${session_id}`, { method: 'DELETE' })
 }
+
+export async function apiInterpretNotification(session_id, notification) {
+  const res = await fetch(`${BASE}/api/interpret`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id, notification }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || 'Error al interpretar')
+  return data
+}
+
+export async function apiDownloadPdf(session_id, notif_id, filename) {
+  const res = await fetch(`${BASE}/api/notifications/${notif_id}/pdf?session_id=${session_id}`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'No se pudo descargar el PDF')
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || 'notificacion_sunat.pdf'
+  a.click()
+  URL.revokeObjectURL(url)
+}
