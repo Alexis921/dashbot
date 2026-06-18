@@ -89,40 +89,75 @@ async def _run_playwright(ruc: str, usuario: str, password: str) -> dict:
         return result
 
 
-async def _find_frame_with_login(page):
-    """SUNAT usa frameset clásico — busca el frame que tiene el formulario de login."""
-    # Primero intentar en la página principal
+async def _get_all_inputs(frame_or_page) -> list:
+    """Devuelve lista de {name, id, type} de todos los inputs en la página/frame."""
     try:
-        el = page.locator("input[name='txtRuc'], #txtRuc")
-        if await el.count() > 0:
-            return page
+        return await frame_or_page.evaluate("""() => {
+            return [...document.querySelectorAll('input,select,textarea')].map(el => ({
+                name: el.name || '',
+                id: el.id || '',
+                type: el.type || '',
+                placeholder: el.placeholder || '',
+            }));
+        }""")
     except Exception:
-        pass
+        return []
 
-    # Buscar en todos los frames (iframes y framesets)
-    for frame in page.frames:
-        try:
-            el = frame.locator("input[name='txtRuc'], #txtRuc")
-            if await el.count() > 0:
-                return frame
-        except Exception:
-            continue
 
+async def _find_frame_with_login(page):
+    """Busca en todos los frames el que contiene el formulario de login SUNAT."""
+    ruc_selectors = [
+        "input[name='txtRuc']", "#txtRuc",
+        "input[name='ruc']", "#ruc",
+        "input[placeholder*='RUC' i]", "input[placeholder*='ruc' i]",
+        "input[id*='ruc' i]", "input[name*='ruc' i]",
+    ]
+
+    # Página principal y todos sus frames
+    candidates = [page] + list(page.frames)
+    for candidate in candidates:
+        for sel in ruc_selectors:
+            try:
+                if await candidate.locator(sel).count() > 0:
+                    return candidate
+            except Exception:
+                continue
     return None
 
 
-async def _fill_login_form(frame_or_page, ruc: str, usuario: str, password: str):
-    """Llena el formulario de login SOL de SUNAT."""
-    await frame_or_page.locator("input[name='txtRuc'], #txtRuc").first.fill(ruc)
-    await frame_or_page.locator("input[name='txtUsuario'], #txtUsuario").first.fill(usuario)
-    # SUNAT usa txtContrasena como nombre del campo contraseña
-    pwd_sel = "input[name='txtContrasena'], #txtContrasena, input[type='password']"
+async def _fill_login_form(frame_or_page, ruc: str, usuario: str, password: str, inputs: list):
+    """Llena el formulario detectando los campos reales de SUNAT."""
+    input_names = {i.get("name", "").lower() for i in inputs}
+    input_ids   = {i.get("id", "").lower() for i in inputs}
+
+    # Campo RUC
+    ruc_sel = next((
+        f"input[name='{i['name']}']" for i in inputs
+        if "ruc" in i.get("name","").lower() or "ruc" in i.get("id","").lower()
+    ), "input[placeholder*='RUC' i]")
+    await frame_or_page.locator(ruc_sel).first.fill(ruc)
+
+    # Campo Usuario SOL
+    usr_sel = next((
+        f"input[name='{i['name']}']" for i in inputs
+        if "usuario" in i.get("name","").lower() or "usuario" in i.get("id","").lower()
+        or "user" in i.get("name","").lower()
+    ), "input[placeholder*='suario' i]")
+    await frame_or_page.locator(usr_sel).first.fill(usuario)
+
+    # Campo Contraseña
+    pwd_sel = next((
+        f"input[name='{i['name']}']" for i in inputs
+        if i.get("type","") == "password"
+        or "contra" in i.get("name","").lower() or "pass" in i.get("name","").lower()
+    ), "input[type='password']")
     await frame_or_page.locator(pwd_sel).first.fill(password)
-    # Botón de ingreso
+
+    # Botón submit
     btn_sel = (
+        "input[type='submit'], button[type='submit'], "
         "input[name='btnAceptar'], #btnAceptar, "
-        "input[value='Ingresar'], input[value='Iniciar'], "
-        "input[type='submit'], button[type='submit']"
+        "input[value*='ngres' i], button:has-text('Ingresar')"
     )
     await frame_or_page.locator(btn_sel).first.click()
 
@@ -139,21 +174,24 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
         login_frame = await _find_frame_with_login(page)
 
         if login_frame is None:
-            # Si no encontró formulario, volcar el HTML para diagnóstico
-            html_preview = (await page.content())[:500]
+            # Recopilar todos los inputs de todos los frames para diagnóstico
+            all_inputs = []
+            for frame in page.frames:
+                all_inputs += await _get_all_inputs(frame)
+            inputs_info = [(i.get("name"), i.get("id"), i.get("type")) for i in all_inputs]
             return {
                 "success": False,
                 "notifications": [],
                 "error": (
-                    "No se encontró el formulario de login de SUNAT. "
-                    "El portal puede haber cambiado su estructura. "
-                    f"Vista previa HTML: {html_preview}"
+                    f"No se encontró el formulario de login de SUNAT. "
+                    f"Inputs encontrados en la página: {inputs_info[:15]}"
                 ),
                 "error_type": "form_not_found",
             }
 
-        # 3. Llenar y enviar el formulario
-        await _fill_login_form(login_frame, ruc, usuario, password)
+        # 3. Recopilar inputs reales y llenar el formulario
+        inputs = await _get_all_inputs(login_frame)
+        await _fill_login_form(login_frame, ruc, usuario, password, inputs)
         await page.wait_for_load_state("domcontentloaded", timeout=15000)
         await page.wait_for_timeout(2000)
 
