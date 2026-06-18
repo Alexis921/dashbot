@@ -106,17 +106,23 @@ async def _get_all_inputs(frame_or_page) -> list:
 
 async def _find_frame_with_login(page):
     """Busca en todos los frames el que contiene el formulario de login SUNAT."""
-    ruc_selectors = [
+    # SUNAT usa varios nombres según la versión del portal:
+    # Antiguo: txtRuc, txtUsuario, txtContrasena
+    # Nuevo (Bootstrap/JS): username, password
+    login_selectors = [
         "input[name='txtRuc']", "#txtRuc",
         "input[name='ruc']", "#ruc",
-        "input[placeholder*='RUC' i]", "input[placeholder*='ruc' i]",
-        "input[id*='ruc' i]", "input[name*='ruc' i]",
+        "input[name='username']:not([type='hidden'])",
+        "input[id='username']:not([type='hidden'])",
+        "input[placeholder*='RUC' i]",
+        "input[placeholder*='usuario' i]",
+        "input[id*='ruc' i]:not([type='hidden'])",
+        "input[name*='ruc' i]:not([type='hidden'])",
     ]
 
-    # Página principal y todos sus frames
     candidates = [page] + list(page.frames)
     for candidate in candidates:
-        for sel in ruc_selectors:
+        for sel in login_selectors:
             try:
                 if await candidate.locator(sel).count() > 0:
                     return candidate
@@ -130,27 +136,45 @@ async def _fill_login_form(frame_or_page, ruc: str, usuario: str, password: str,
     input_names = {i.get("name", "").lower() for i in inputs}
     input_ids   = {i.get("id", "").lower() for i in inputs}
 
-    # Campo RUC
-    ruc_sel = next((
-        f"input[name='{i['name']}']" for i in inputs
-        if "ruc" in i.get("name","").lower() or "ruc" in i.get("id","").lower()
-    ), "input[placeholder*='RUC' i]")
-    await frame_or_page.locator(ruc_sel).first.fill(ruc)
+    visible = [i for i in inputs if i.get("type") != "hidden"]
 
-    # Campo Usuario SOL
-    usr_sel = next((
-        f"input[name='{i['name']}']" for i in inputs
-        if "usuario" in i.get("name","").lower() or "usuario" in i.get("id","").lower()
-        or "user" in i.get("name","").lower()
-    ), "input[placeholder*='suario' i]")
-    await frame_or_page.locator(usr_sel).first.fill(usuario)
+    # Campo RUC — en portal nuevo SUNAT el campo username contiene RUC+usuario concatenado
+    # En portal clásico: txtRuc separado
+    ruc_field = next((
+        i for i in visible
+        if any(k in i.get("name","").lower() or k in i.get("id","").lower()
+               for k in ["txtruc", "ruc"])
+    ), None)
+
+    if ruc_field:
+        # Portal clásico: hay campo RUC separado
+        await frame_or_page.locator(f"[name='{ruc_field['name']}']").first.fill(ruc)
+        usr_field = next((
+            i for i in visible
+            if any(k in i.get("name","").lower() or k in i.get("id","").lower()
+                   for k in ["usuario", "user"])
+        ), None)
+        if usr_field:
+            await frame_or_page.locator(f"[name='{usr_field['name']}']").first.fill(usuario)
+    else:
+        # Portal nuevo (Bootstrap): campo "username" = RUC + USUARIO juntos (ej: 10094431153TRUSEGON)
+        usr_field = next((
+            i for i in visible
+            if any(k in i.get("name","").lower() or k in i.get("id","").lower()
+                   for k in ["username", "user", "usuario"])
+        ), None)
+        if usr_field:
+            # SUNAT nuevo: el campo username lleva RUC + USUARIO sin espacio
+            combined = ruc + usuario
+            await frame_or_page.locator(f"[name='{usr_field['name']}']").first.fill(combined)
 
     # Campo Contraseña
-    pwd_sel = next((
-        f"input[name='{i['name']}']" for i in inputs
-        if i.get("type","") == "password"
-        or "contra" in i.get("name","").lower() or "pass" in i.get("name","").lower()
-    ), "input[type='password']")
+    pwd_field = next((
+        i for i in visible
+        if i.get("type") == "password"
+        or any(k in i.get("name","").lower() for k in ["contra", "pass", "pwd"])
+    ), None)
+    pwd_sel = f"[name='{pwd_field['name']}']" if pwd_field else "input[type='password']"
     await frame_or_page.locator(pwd_sel).first.fill(password)
 
     # Botón submit
@@ -166,9 +190,18 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # 1. Ir a la página de autenticación de e-menu SUNAT
-        await page.goto(SUNAT_LOGIN_URL, wait_until="domcontentloaded", timeout=25000)
-        await page.wait_for_timeout(2000)  # Dejar que carguen los frames
+        # 1. Ir a la página de autenticación — esperar a que JS renderice el formulario
+        await page.goto(SUNAT_LOGIN_URL, wait_until="networkidle", timeout=30000)
+        # Esperar que los campos visibles aparezcan tras ejecutar JS (hasta 15s)
+        try:
+            await page.wait_for_selector(
+                "input:not([type='hidden'])",
+                state="visible",
+                timeout=15000,
+            )
+        except Exception:
+            pass
+        await page.wait_for_timeout(1000)
 
         # 2. Buscar el frame/página que tiene el formulario de login
         login_frame = await _find_frame_with_login(page)
