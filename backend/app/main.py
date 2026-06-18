@@ -20,6 +20,7 @@ load_dotenv()
 
 from app.database import get_db, init_db, Notification, SyncLog
 from app.scraper import scrape_sunat_notifications, get_demo_notifications
+from app.playwright_scraper import scrape_with_playwright
 from app.email_service import send_email_summary
 from app.ai_summary import generate_ai_summary, generate_ai_summary_expert, generate_notification_interpretation
 
@@ -124,11 +125,17 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
     if session.get("demo_mode"):
         result = await get_demo_notifications(ruc)
     else:
-        result = await scrape_sunat_notifications(
+        # 1. Intentar con Playwright (navegador real)
+        result = await scrape_with_playwright(
             ruc, session["usuario"], session["password"]
         )
+        # 2. Si Playwright falla, intentar con httpx como fallback
+        if not result["success"] and result.get("error_type") in ("playwright_not_installed", "browser_error"):
+            result = await scrape_sunat_notifications(
+                ruc, session["usuario"], session["password"]
+            )
+
         if not result["success"]:
-            # Retornar error real sin caer a demo
             error_type = result.get("error_type", "sunat_no_disponible")
             return {
                 "success": False,
