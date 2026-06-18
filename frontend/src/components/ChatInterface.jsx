@@ -215,20 +215,6 @@ export default function ChatInterface({ session, onLogout }) {
 
   return (
     <>
-      <header className="header">
-        <div className="header-logo-box">📋</div>
-        <div>
-          <div className="header-title">Dashbot</div>
-          <div className="header-sub">Dashcont Technology System Automatizacion SAC</div>
-        </div>
-        <div className="header-right">
-          <div className="sync-dot" title="Sincronizado" />
-          {session.ruc && <div className="ruc-badge">RUC {session.ruc}</div>}
-          <a href="/" className="btn-home">🏠 Inicio</a>
-          <button className="btn-logout" onClick={onLogout}>Salir</button>
-        </div>
-      </header>
-
       <div className="chat-area">
         {messages.map((m) =>
           m.role === 'bot'
