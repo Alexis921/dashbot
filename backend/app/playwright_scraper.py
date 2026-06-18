@@ -207,17 +207,32 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
         login_frame = await _find_frame_with_login(page)
 
         if login_frame is None:
-            # Recopilar todos los inputs de todos los frames para diagnóstico
+            # Diagnóstico extendido: URL actual, título, todos los elementos interactivos
+            current_url = page.url
+            page_title = await page.title()
             all_inputs = []
             for frame in page.frames:
                 all_inputs += await _get_all_inputs(frame)
             inputs_info = [(i.get("name"), i.get("id"), i.get("type")) for i in all_inputs]
+
+            # Buscar cualquier elemento interactivo visible (no solo inputs)
+            interactive = await page.evaluate("""() => {
+                const els = [...document.querySelectorAll('input,button,a,[role=button],[contenteditable],div[onclick]')];
+                return els.slice(0,20).map(e => ({
+                    tag: e.tagName, type: e.type||'', id: e.id||'',
+                    name: e.name||'', text: (e.innerText||'').slice(0,30),
+                    visible: e.offsetParent !== null
+                }));
+            }""")
+
             return {
                 "success": False,
                 "notifications": [],
                 "error": (
-                    f"No se encontró el formulario de login de SUNAT. "
-                    f"Inputs encontrados en la página: {inputs_info[:15]}"
+                    f"URL actual: {current_url} | "
+                    f"Título: {page_title} | "
+                    f"Inputs: {inputs_info[:10]} | "
+                    f"Elementos interactivos: {interactive[:10]}"
                 ),
                 "error_type": "form_not_found",
             }
