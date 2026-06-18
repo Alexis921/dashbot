@@ -10,13 +10,12 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 libxrandr2 libgbm1 libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Instalar solo Chromium
 RUN playwright install chromium
 
-COPY . .
+COPY backend/ .
 
 EXPOSE 8000
 
