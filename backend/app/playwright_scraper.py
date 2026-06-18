@@ -190,18 +190,12 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # 1. Ir a la página de autenticación — esperar a que JS renderice el formulario
+        # 1. Navegar y esperar que JS cargue completamente
         await page.goto(SUNAT_LOGIN_URL, wait_until="networkidle", timeout=30000)
-        # Esperar que los campos visibles aparezcan tras ejecutar JS (hasta 15s)
-        try:
-            await page.wait_for_selector(
-                "input:not([type='hidden'])",
-                state="visible",
-                timeout=15000,
-            )
-        except Exception:
-            pass
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(3000)
+
+        # Diagnóstico de frames: detectar URL del iframe con el form real
+        frame_urls = [f.url for f in page.frames if f.url and f.url != "about:blank"]
 
         # 2. Buscar el frame/página que tiene el formulario de login
         login_frame = await _find_frame_with_login(page)
@@ -231,8 +225,9 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
                 "error": (
                     f"URL actual: {current_url} | "
                     f"Título: {page_title} | "
+                    f"Frames: {frame_urls} | "
                     f"Inputs: {inputs_info[:10]} | "
-                    f"Elementos interactivos: {interactive[:10]}"
+                    f"Interactivos: {[e['tag']+':'+e['id']+'/'+e['text'][:20] for e in interactive[:8]]}"
                 ),
                 "error_type": "form_not_found",
             }
