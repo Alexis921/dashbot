@@ -6,7 +6,19 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./sunat_bot.db")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# PostgreSQL necesita pool settings distintos a SQLite
+_is_sqlite = DATABASE_URL.startswith("sqlite")
+if _is_sqlite:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    # Neon / Supabase / cualquier Postgres
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=300,
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

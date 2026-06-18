@@ -13,7 +13,8 @@ URGENT_KEYWORDS = [
     "resolución de determinación", "resolución de multa", "orden de pago",
 ]
 
-SUNAT_SOL_URL = "https://www.sunat.gob.pe/sol.html"
+SUNAT_LOGIN_URL = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm"
+SUNAT_BUZON_URL = "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico/bin/ejecBuzon.do"
 
 
 def _is_urgent(subject: str) -> bool:
@@ -92,33 +93,38 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # 1. Ir a login SOL
-        await page.goto(SUNAT_SOL_URL, wait_until="domcontentloaded", timeout=20000)
+        # 1. Ir directamente al formulario de login de e-menu SUNAT
+        await page.goto(SUNAT_LOGIN_URL, wait_until="domcontentloaded", timeout=20000)
 
-        # 2. Llenar formulario de login
-        try:
-            await page.wait_for_selector(
-                'input[name="txtRuc"], #txtRuc, input[id*="ruc" i]',
-                timeout=8000,
-            )
-            await page.locator('input[name="txtRuc"], #txtRuc, input[id*="ruc" i]').first.fill(ruc)
-            await page.locator('input[name="txtUsuario"], #txtUsuario, input[id*="usuario" i]').first.fill(usuario)
-            await page.locator('input[type="password"]').first.fill(password)
-            await page.locator(
-                'input[type="submit"], button[type="submit"], input[value*="ngres" i]'
-            ).first.click()
-            await page.wait_for_load_state("domcontentloaded", timeout=12000)
-        except PWTimeout:
-            # Si no encuentra el form en la página inicial, intentar e-menu directo
-            await page.goto(
-                "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm",
-                wait_until="domcontentloaded",
-                timeout=15000,
-            )
+        # 2. Esperar y llenar el formulario (campos reales de SUNAT SOL)
+        await page.wait_for_selector("#txtRuc, input[name='txtRuc']", timeout=10000)
 
-        # 3. Verificar credenciales incorrectas
+        await page.locator("#txtRuc, input[name='txtRuc']").first.fill(ruc)
+        await page.locator("#txtUsuario, input[name='txtUsuario']").first.fill(usuario)
+        # SUNAT usa txtContrasena (no txtPassword)
+        await page.locator(
+            "#txtContrasena, input[name='txtContrasena'], input[type='password']"
+        ).first.fill(password)
+
+        # 3. Click en botón de ingreso
+        await page.locator(
+            "input[type='submit'][value*='ngres' i], "
+            "button[type='submit'], "
+            "#btnIngresar, "
+            "input[name='btnAceptar']"
+        ).first.click()
+
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+
+        # 4. Detectar error de credenciales
         body_text = (await page.inner_text("body")).lower()
-        if any(e in body_text for e in ["contraseña incorrecta", "datos incorrectos", "ruc o usuario"]):
+        cred_errors = [
+            "contraseña incorrecta", "datos incorrectos",
+            "ruc o usuario", "usuario o contraseña",
+            "acceso denegado", "no válido", "inválido",
+            "error de autenticación",
+        ]
+        if any(e in body_text for e in cred_errors):
             return {
                 "success": False,
                 "notifications": [],
@@ -126,79 +132,93 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
                 "error_type": "credenciales",
             }
 
-        # 4. Manejar popup "Tiene notificaciones pendientes"
+        # 5. Manejar popup "Tiene notificaciones pendientes de lectura"
+        #    Botones posibles: "Ir al Buzón Electrónico" o "Ver más tarde"
         try:
-            popup = page.locator(
-                'input[value*="Buzón" i], button:has-text("Buzón"), '
-                'input[value*="Ir al" i], a:has-text("Buzón Electrónico")'
+            await page.wait_for_timeout(2000)  # Esperar que aparezca el popup
+            # Intentar hacer clic en "Ir al Buzón" primero
+            buzon_btn = page.locator(
+                "input[value*='Buz' i], "
+                "button:has-text('Buz'), "
+                "a:has-text('Buz'), "
+                "input[value*='Ir al' i]"
             )
-            if await popup.count() > 0:
-                await popup.first.click()
-                await page.wait_for_load_state("domcontentloaded", timeout=8000)
+            if await buzon_btn.count() > 0:
+                await buzon_btn.first.click()
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
             else:
-                later = page.locator('input[value*="tarde" i], button:has-text("tarde")')
+                # Cerrar popup con "Ver más tarde" y navegar manualmente al buzón
+                later = page.locator(
+                    "input[value*='tarde' i], button:has-text('tarde'), input[value*='omitir' i]"
+                )
                 if await later.count() > 0:
                     await later.first.click()
                     await page.wait_for_load_state("domcontentloaded", timeout=8000)
+                # Navegar directamente al buzón
+                await page.goto(SUNAT_BUZON_URL, wait_until="domcontentloaded", timeout=20000)
         except Exception:
-            pass
+            # Si falla el popup, ir directamente al buzón con la sesión activa
+            await page.goto(SUNAT_BUZON_URL, wait_until="domcontentloaded", timeout=20000)
 
-        # 5. Navegar al buzón electrónico directamente
-        for buzon_url in [
-            "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico/bin/ejecBuzon.do",
-            "https://www.sunat.gob.pe/ol-ti-itbuzonelectronico/bin/ejecBuzon.do",
-        ]:
-            try:
-                await page.goto(buzon_url, wait_until="domcontentloaded", timeout=15000)
-                txt = (await page.inner_text("body")).lower()
-                if "asunto" in txt or "notificaci" in txt or "buzón" in txt:
-                    break
-            except Exception:
-                continue
-
-        # 6. Esperar tabla
+        # 6. Esperar que cargue la tabla del buzón
         try:
-            await page.wait_for_selector("table tr, .notificacion", timeout=8000)
+            await page.wait_for_selector(
+                "table tr td, .lista-notificaciones, #tblNotificaciones",
+                timeout=12000,
+            )
         except PWTimeout:
             pass
 
-        # 7. Extraer notificaciones
+        # 7. Extraer notificaciones del HTML
         html = await page.content()
         notifications = _parse_html(html, ruc)
         if not notifications:
             notifications = await _extract_dom(page, ruc)
 
+        # 8. Evaluar resultado
         if not notifications:
             body_final = (await page.inner_text("body")).lower()
-            if "buzón" in body_final or "notificaci" in body_final:
+            # Si llegamos al buzón pero no hay notificaciones = buzón vacío
+            if any(w in body_final for w in ["buzón", "notificaci", "bandeja", "buz"]):
                 return {
                     "success": True,
                     "notifications": [],
                     "error": None,
-                    "note": "Buzón accedido correctamente. Sin notificaciones pendientes.",
+                    "note": "Buzón accedido. Sin notificaciones pendientes.",
                 }
+            # Si no reconocemos la página = sesión no autenticada
             return {
                 "success": False,
                 "notifications": [],
-                "error": "Se accedió a SUNAT pero no se encontraron notificaciones en el buzón. Puede que la sesión no esté completamente autenticada.",
-                "error_type": "no_data",
+                "error": (
+                    "Playwright llegó a SUNAT pero el login no completó correctamente. "
+                    "Verifica tus credenciales SOL (RUC + usuario SOL + contraseña SOL)."
+                ),
+                "error_type": "auth_incomplete",
             }
 
         return {"success": True, "notifications": notifications, "error": None}
 
+    except PWTimeout as e:
+        return {
+            "success": False,
+            "notifications": [],
+            "error": f"SUNAT tardó demasiado en responder ({str(e)[:100]}). Intenta de nuevo en unos minutos.",
+            "error_type": "timeout",
+        }
     except Exception as e:
         err = str(e)
-        if "ERR_NAME_NOT_RESOLVED" in err or "net::ERR" in err:
+        if "ERR_NAME_NOT_RESOLVED" in err or "net::ERR_NAME" in err:
             return {
                 "success": False,
                 "notifications": [],
-                "error": "No se puede acceder a SUNAT desde este servidor. SUNAT bloquea IPs internacionales (el servidor está en USA).",
-                "error_type": "ip_blocked",
+                "error": "No se puede resolver el dominio de SUNAT. Problema de red del servidor.",
+                "error_type": "dns_error",
             }
         return {
             "success": False,
             "notifications": [],
-            "error": f"Error al navegar SUNAT: {err[:200]}",
+            "error": f"Error navegando SUNAT: {err[:200]}",
             "error_type": "navigation_error",
         }
 
