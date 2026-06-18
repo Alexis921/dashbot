@@ -3,18 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashbot �?" Automatización Tributaria SUNAT | Dashcont Technology</title>
+<title>Dashbot &mdash; Automatización Tributaria SUNAT | Dashcont Technology</title>
 <meta name="description" content="Dashbot automatiza la lectura de tu buzón SUNAT. Detecta multas, plazos y notificaciones críticas antes de que sea tarde.">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --red:#c8102e;--red-dk:#9e0d24;--red-lt:#fff0f3;
-  --navy:#0d1b3e;--navy-lt:#1a2d5a;
+  --navy:#1B3A6B;--navy-dk:#0f2347;--navy-lt:#2a4f8a;
+  --green:#00A651;--green-dk:#007d3c;--green-lt:#e6f7ee;
   --accent:#f59e0b;--accent-lt:#fffbeb;
-  --green:#16a34a;--green-lt:#f0fdf4;
-  --blue:#2563eb;--blue-lt:#eff6ff;
-  --gray-50:#f9fafb;--gray-100:#f3f4f6;--gray-200:#e5e7eb;
-  --gray-400:#9ca3af;--gray-600:#4b5563;--gray-800:#1f2937;
+  --gray-50:#f4f6f9;--gray-100:#eaecf0;--gray-200:#d0d5dd;
+  --gray-400:#98a2b3;--gray-600:#667085;--gray-800:#1d2939;
   --white:#fff;
   --font:'Inter',system-ui,-apple-system,sans-serif;
   --shadow-sm:0 1px 3px rgba(0,0,0,.08);
@@ -27,12 +25,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--white);line-
 img{max-width:100%}
 a{text-decoration:none;color:inherit}
 
-/* �"?�"? UTILS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* UTILS */
 .container{max-width:1140px;margin:0 auto;padding:0 24px}
 .section{padding:80px 0}
 .section-sm{padding:56px 0}
-.tag{display:inline-flex;align-items:center;gap:6px;background:var(--red-lt);color:var(--red);border:1px solid #fecdcd;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:16px}
-.badge-accent{background:var(--accent-lt);color:#92400e;border-color:#fde68a}
+.tag{display:inline-flex;align-items:center;gap:6px;background:var(--green-lt);color:var(--green-dk);border:1px solid #b3e6cc;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:16px}
 .section-title{font-size:clamp(26px,4vw,38px);font-weight:800;color:var(--navy);line-height:1.2;margin-bottom:14px}
 .section-sub{font-size:16px;color:var(--gray-600);max-width:600px;margin:0 auto 48px}
 .text-center{text-align:center}
@@ -40,12 +37,12 @@ a{text-decoration:none;color:inherit}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
 
-/* �"?�"? BUTTONS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:13px 26px;font-size:15px;font-weight:700;cursor:pointer;border:none;transition:all .18s;white-space:nowrap}
-.btn-red{background:var(--red);color:white}
-.btn-red:hover{background:var(--red-dk);transform:translateY(-1px);box-shadow:0 6px 20px rgba(200,16,46,.35)}
+.btn-green{background:var(--green);color:white}
+.btn-green:hover{background:var(--green-dk);transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,166,81,.35)}
 .btn-navy{background:var(--navy);color:white}
-.btn-navy:hover{background:var(--navy-lt);transform:translateY(-1px)}
+.btn-navy:hover{background:var(--navy-dk);transform:translateY(-1px);box-shadow:0 6px 20px rgba(27,58,107,.35)}
 .btn-outline{background:transparent;color:var(--navy);border:2px solid var(--gray-200)}
 .btn-outline:hover{border-color:var(--navy);background:var(--gray-50)}
 .btn-wa{background:#25d366;color:white}
@@ -53,67 +50,66 @@ a{text-decoration:none;color:inherit}
 .btn-lg{padding:16px 32px;font-size:16px}
 .btn-sm{padding:9px 18px;font-size:13px}
 
-/* �"?�"? NAV �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
-nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--gray-200)}
+/* NAV */
+nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--gray-200)}
 .nav-inner{display:flex;align-items:center;gap:32px;padding:0 24px;height:66px;max-width:1140px;margin:0 auto}
 .nav-logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.nav-logo-icon{width:36px;height:36px;background:var(--red);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.nav-logo-icon{width:36px;height:36px;background:var(--green);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px}
 .nav-logo-text{display:flex;flex-direction:column;line-height:1}
 .nav-logo-name{font-size:18px;font-weight:800;color:var(--navy);letter-spacing:-.3px}
 .nav-logo-co{font-size:9px;color:var(--gray-400);letter-spacing:.2px;margin-top:1px}
 .nav-links{display:flex;gap:28px;margin-left:auto}
 .nav-links a{font-size:14px;font-weight:500;color:var(--gray-600);transition:color .15s}
-.nav-links a:hover{color:var(--red)}
+.nav-links a:hover{color:var(--green)}
 .nav-cta{display:flex;gap:10px;margin-left:24px}
 
-/* �"?�"? HERO �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
-.hero{background:linear-gradient(135deg,var(--navy) 0%,#1e3a6e 55%,#0d1b3e 100%);padding:90px 0 80px;overflow:hidden;position:relative}
+/* HERO */
+.hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-lt) 55%,var(--navy-dk) 100%);padding:90px 0 80px;overflow:hidden;position:relative}
 .hero::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
 .hero-content{position:relative;z-index:1}
 .hero-label{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:22px}
 .hero h1{font-size:clamp(30px,5vw,54px);font-weight:900;color:white;line-height:1.12;margin-bottom:20px;letter-spacing:-.5px}
-.hero h1 span{color:var(--accent)}
+.hero h1 span{color:var(--green)}
 .hero-sub{font-size:clamp(15px,2vw,18px);color:rgba(255,255,255,.75);max-width:540px;margin-bottom:36px;line-height:1.65}
 .hero-actions{display:flex;gap:14px;flex-wrap:wrap}
 .hero-stats{display:flex;gap:32px;margin-top:48px;flex-wrap:wrap}
 .hero-stat{display:flex;flex-direction:column}
-.hero-stat-num{font-size:28px;font-weight:900;color:var(--accent)}
+.hero-stat-num{font-size:28px;font-weight:900;color:var(--green)}
 .hero-stat-label{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px}
 .hero-img{border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.1)}
-.mock-chat{background:#1a2d5a;border-radius:12px;padding:20px;min-height:340px;font-size:13px}
-.mock-header{background:#c8102e;border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.mock-chat{background:#0f2347;border-radius:12px;padding:20px;min-height:340px;font-size:13px}
+.mock-header{background:var(--green);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .mock-header-title{color:white;font-weight:700;font-size:14px}
-.mock-header-sub{color:rgba(255,255,255,.7);font-size:11px}
+.mock-header-sub{color:rgba(255,255,255,.8);font-size:11px}
 .mock-msg{display:flex;gap:8px;margin-bottom:12px}
-.mock-avatar{width:28px;height:28px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.mock-avatar{width:28px;height:28px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
 .mock-bubble{background:rgba(255,255,255,.08);border-radius:0 8px 8px 8px;padding:8px 12px;color:rgba(255,255,255,.85);line-height:1.4;font-size:12px;flex:1}
-.mock-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-left:3px solid #c8102e;border-radius:6px;padding:10px 12px;margin:4px 0}
+.mock-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-left:3px solid var(--green);border-radius:6px;padding:10px 12px;margin:4px 0}
 .mock-card-title{color:rgba(255,255,255,.9);font-weight:600;font-size:11px;margin-bottom:4px}
 .mock-card-meta{color:rgba(255,255,255,.45);font-size:10px}
-.mock-badge{display:inline-block;background:#c8102e;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px}
+.mock-badge{display:inline-block;background:#d92d20;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px}
 
-/* �"?�"? ALERTS BAND �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
-.alerts-band{background:#fff7ed;border-top:4px solid var(--accent);border-bottom:1px solid #fed7aa;padding:20px 0}
+/* ALERTS BAND */
+.alerts-band{background:#f0fdf4;border-top:4px solid var(--green);border-bottom:1px solid #b3e6cc;padding:20px 0}
 .alerts-row{display:flex;gap:0;flex-wrap:wrap}
-.alert-item{flex:1;min-width:200px;display:flex;align-items:center;gap:14px;padding:12px 24px;border-right:1px solid #fed7aa}
+.alert-item{flex:1;min-width:200px;display:flex;align-items:center;gap:14px;padding:12px 24px;border-right:1px solid #b3e6cc}
 .alert-item:last-child{border-right:none}
 .alert-icon{font-size:28px;flex-shrink:0}
-.alert-num{font-size:22px;font-weight:900;color:#c8102e;line-height:1}
-.alert-label{font-size:12px;color:#92400e;margin-top:2px}
+.alert-num{font-size:22px;font-weight:900;color:var(--navy);line-height:1}
+.alert-label{font-size:12px;color:var(--gray-600);margin-top:2px}
 
-/* �"?�"? FEATURE CARDS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* FEATURE CARDS */
 .feat-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--r);padding:28px;transition:box-shadow .2s,transform .15s}
 .feat-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
 .feat-icon{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px}
-.feat-icon.red{background:var(--red-lt)}
-.feat-icon.blue{background:var(--blue-lt)}
 .feat-icon.green{background:var(--green-lt)}
+.feat-icon.navy{background:#e8eef7}
 .feat-icon.amber{background:var(--accent-lt)}
 .feat-title{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px}
 .feat-text{font-size:14px;color:var(--gray-600);line-height:1.6}
 
-/* �"?�"? RISK SECTION �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
-.risk-section{background:linear-gradient(135deg,#1f0a0e 0%,#3b0d19 100%);color:white}
+/* RISK SECTION */
+.risk-section{background:linear-gradient(135deg,var(--navy-dk) 0%,var(--navy) 100%);color:white}
 .risk-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:24px}
 .risk-card-icon{font-size:32px;margin-bottom:12px}
 .risk-card-title{font-size:15px;font-weight:700;color:white;margin-bottom:8px}
@@ -121,54 +117,54 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.95);backdrop-
 .risk-card-amount{font-size:26px;font-weight:900;color:#f87171;margin:10px 0 4px}
 .risk-card-label{font-size:11px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px}
 
-/* �"?�"? MULTAS TABLE �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* MULTAS TABLE */
 .multas-table{width:100%;border-collapse:collapse;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
 .multas-table th{background:var(--navy);color:white;padding:14px 18px;font-size:13px;font-weight:700;text-align:left}
 .multas-table td{padding:13px 18px;font-size:13px;border-bottom:1px solid var(--gray-100)}
 .multas-table tr:nth-child(even) td{background:var(--gray-50)}
 .multas-table tr:last-child td{border-bottom:none}
-.multa-high{color:#c8102e;font-weight:700}
+.multa-high{color:#d92d20;font-weight:700}
 .multa-med{color:#d97706;font-weight:700}
 
-/* �"?�"? HOW IT WORKS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* HOW IT WORKS */
 .steps{display:flex;flex-direction:column;gap:0;position:relative}
 .step{display:flex;gap:24px;padding:28px 0;position:relative}
 .step:not(:last-child)::after{content:'';position:absolute;left:23px;top:72px;bottom:0;width:2px;background:var(--gray-200)}
-.step-num{width:48px;height:48px;border-radius:50%;background:var(--red);color:white;font-weight:900;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;z-index:1}
+.step-num{width:48px;height:48px;border-radius:50%;background:var(--green);color:white;font-weight:900;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;z-index:1}
 .step-body{}
 .step-title{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:6px}
 .step-text{font-size:14px;color:var(--gray-600);line-height:1.6}
 
-/* �"?�"? PRICING �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* PRICING */
 .pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;align-items:start}
 .plan-card{background:var(--white);border:2px solid var(--gray-200);border-radius:var(--r);padding:32px;position:relative;transition:box-shadow .2s}
 .plan-card:hover{box-shadow:var(--shadow)}
-.plan-card.popular{border-color:var(--red);box-shadow:0 0 0 4px rgba(200,16,46,.08)}
-.popular-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--red);color:white;font-size:11px;font-weight:800;padding:4px 16px;border-radius:20px;white-space:nowrap;letter-spacing:.4px}
+.plan-card.popular{border-color:var(--green);box-shadow:0 0 0 4px rgba(0,166,81,.08)}
+.popular-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--green);color:white;font-size:11px;font-weight:800;padding:4px 16px;border-radius:20px;white-space:nowrap;letter-spacing:.4px}
 .plan-name{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gray-600);margin-bottom:8px}
 .plan-price{font-size:38px;font-weight:900;color:var(--navy);line-height:1}
 .plan-price span{font-size:16px;font-weight:500;color:var(--gray-400)}
 .plan-desc{font-size:13px;color:var(--gray-600);margin:10px 0 20px;line-height:1.5}
 .plan-features{list-style:none;display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
 .plan-features li{display:flex;gap:10px;font-size:13px;color:var(--gray-600)}
-.plan-features li::before{content:'�o"';color:var(--green);font-weight:900;flex-shrink:0}
+.plan-features li::before{content:'✓';color:var(--green);font-weight:900;flex-shrink:0}
 .plan-note{font-size:11px;color:var(--gray-400);text-align:center;margin-top:12px}
 
-/* �"?�"? FAQ �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* FAQ */
 .faq-item{border-bottom:1px solid var(--gray-200);padding:20px 0}
 .faq-q{font-size:15px;font-weight:700;color:var(--navy);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px}
-.faq-q::after{content:'�<';color:var(--red);font-size:20px;flex-shrink:0}
-.faq-item.open .faq-q::after{content:'－'}
+.faq-q::after{content:'+';color:var(--green);font-size:22px;font-weight:700;flex-shrink:0}
+.faq-item.open .faq-q::after{content:'−'}
 .faq-a{font-size:14px;color:var(--gray-600);line-height:1.7;padding-top:12px;display:none}
 .faq-item.open .faq-a{display:block}
 
-/* �"?�"? CTA BANNER �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
-.cta-banner{background:linear-gradient(135deg,var(--red) 0%,#8b0d20 100%);padding:70px 0;text-align:center}
+/* CTA BANNER */
+.cta-banner{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dk) 100%);padding:70px 0;text-align:center}
 .cta-banner h2{font-size:clamp(24px,4vw,36px);font-weight:900;color:white;margin-bottom:14px}
 .cta-banner p{font-size:16px;color:rgba(255,255,255,.8);margin-bottom:32px}
 .cta-actions{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
 
-/* �"?�"? FOOTER �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* FOOTER */
 footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 .footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:48px;margin-bottom:40px}
 .footer-brand-name{font-size:22px;font-weight:900;color:white;margin-bottom:4px}
@@ -178,20 +174,20 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 .footer-links{display:flex;flex-direction:column;gap:8px}
 .footer-links a{font-size:13px;color:rgba(255,255,255,.55);transition:color .15s}
 .footer-links a:hover{color:white}
-.footer-bottom{border-top:1px solid rgba(255,255,255,.1);padding-top:24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:gap;font-size:12px;color:rgba(255,255,255,.35)}
+.footer-bottom{border-top:1px solid rgba(255,255,255,.1);padding-top:24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:12px;color:rgba(255,255,255,.35)}
 
-/* �"?�"? WA FLOAT �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* WA FLOAT */
 .wa-float{position:fixed;bottom:24px;right:24px;z-index:999;width:56px;height:56px;background:#25d366;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 6px 24px rgba(37,211,102,.45);cursor:pointer;transition:transform .15s}
 .wa-float:hover{transform:scale(1.1)}
 
-/* �"?�"? RESPONSIVE �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? */
+/* RESPONSIVE */
 @media(max-width:900px){
   .grid-2,.grid-3,.pricing-grid,.footer-grid{grid-template-columns:1fr}
   .grid-4{grid-template-columns:1fr 1fr}
   .nav-links{display:none}
   .hero{padding:60px 0}
   .alerts-row{flex-direction:column}
-  .alert-item{border-right:none;border-bottom:1px solid #fed7aa}
+  .alert-item{border-right:none;border-bottom:1px solid #b3e6cc}
   .alert-item:last-child{border-bottom:none}
 }
 @media(max-width:520px){
@@ -204,11 +200,11 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 </head>
 <body>
 
-<!-- �"?�"? NAV �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- NAV -->
 <nav>
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <div class="nav-logo-icon">�Y"<</div>
+      <div class="nav-logo-icon">📋</div>
       <div class="nav-logo-text">
         <span class="nav-logo-name">Dashbot</span>
         <span class="nav-logo-co">Dashcont Technology System Automatizacion SAC</span>
@@ -223,21 +219,21 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
     </div>
     <div class="nav-cta">
       <a href="/" class="btn btn-outline btn-sm">Ver demo</a>
-      <a href="#planes" class="btn btn-red btn-sm">Empezar</a>
+      <a href="#planes" class="btn btn-green btn-sm">Empezar</a>
     </div>
   </div>
 </nav>
 
-<!-- �"?�"? HERO �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- HERO -->
 <section class="hero">
   <div class="container">
     <div class="grid-2">
       <div class="hero-content">
-        <div class="hero-label">�Y?��Y?� Para Contadores Peruanos</div>
+        <div class="hero-label">🇵🇪 Para Contadores Peruanos</div>
         <h1>Tu buzón SUNAT,<br><span>bajo control.</span><br>Sin vigilarlo tú.</h1>
         <p class="hero-sub">Dashbot lee automáticamente tus notificaciones del buzón SOL, detecta urgencias, calcula multas potenciales y te avisa antes de que sea tarde.</p>
         <div class="hero-actions">
-          <a href="/" class="btn btn-red btn-lg">�Ys? Probar Dashbot gratis</a>
+          <a href="/" class="btn btn-green btn-lg">🚀 Probar Dashbot gratis</a>
           <a href="#como-funciona" class="btn btn-outline btn-lg" style="color:white;border-color:rgba(255,255,255,.35)">Ver cómo funciona</a>
         </div>
         <div class="hero-stats">
@@ -258,37 +254,37 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
       <div class="hero-img">
         <div class="mock-chat">
           <div class="mock-header">
-            <div style="background:rgba(255,255,255,.2);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px">�Y"<</div>
+            <div style="background:rgba(255,255,255,.2);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px">📋</div>
             <div>
               <div class="mock-header-title">Dashbot</div>
               <div class="mock-header-sub">RUC 20603448308 · Sincronizado ahora</div>
             </div>
-            <div style="margin-left:auto;background:#16a34a;border-radius:12px;padding:2px 8px;font-size:10px;color:white;font-weight:700">�-� EN LÍNEA</div>
+            <div style="margin-left:auto;background:rgba(255,255,255,.2);border-radius:12px;padding:2px 8px;font-size:10px;color:white;font-weight:700">● EN LÍNEA</div>
           </div>
           <div class="mock-msg">
-            <div class="mock-avatar">�Y�-</div>
+            <div class="mock-avatar">🤖</div>
             <div class="mock-bubble">
-              �s�️ Detecté <strong>2 notificaciones urgentes</strong> en tu buzón SUNAT:
+              ⚠️ Detecté <strong>2 notificaciones urgentes</strong> en tu buzón SUNAT:
               <div class="mock-card" style="margin-top:8px">
-                <div class="mock-card-title">�Y"� Baja de inscripción provisional<span class="mock-badge">URGENTE</span></div>
-                <div class="mock-card-meta">�Y". 15 ene 2024 · Ref: 0730050023836 · �Y"Z Adjunto</div>
+                <div class="mock-card-title">📄 Baja de inscripción provisional<span class="mock-badge">URGENTE</span></div>
+                <div class="mock-card-meta">📅 15 ene 2024 · Ref: 0730050023836 · 📎 Adjunto</div>
               </div>
               <div class="mock-card">
-                <div class="mock-card-title">�Y"� Esquela de citación �?" Auditoría<span class="mock-badge">URGENTE</span></div>
-                <div class="mock-card-meta">�Y". 14 ene 2024 · Ref: 0730050023837 · �Y"Z Adjunto</div>
+                <div class="mock-card-title">📄 Esquela de citación – Auditoría<span class="mock-badge">URGENTE</span></div>
+                <div class="mock-card-meta">📅 14 ene 2024 · Ref: 0730050023837 · 📎 Adjunto</div>
               </div>
               <div style="margin-top:8px;color:rgba(255,255,255,.6);font-size:11px">¿Quieres que te envíe el resumen por correo?</div>
             </div>
           </div>
           <div class="mock-msg" style="flex-direction:row-reverse">
-            <div class="mock-avatar" style="background:#1a56a0">�Y'�</div>
-            <div class="mock-bubble" style="background:#1a56a0;border-radius:8px 0 8px 8px">
+            <div class="mock-avatar" style="background:var(--navy-lt)">👤</div>
+            <div class="mock-bubble" style="background:var(--navy-lt);border-radius:8px 0 8px 8px">
               Sí, envíame el resumen al correo del estudio
             </div>
           </div>
           <div class="mock-msg">
-            <div class="mock-avatar">�Y�-</div>
-            <div class="mock-bubble">�o. Resumen enviado a <strong>estudio@contabilidad.com</strong>. También te avisaré por WhatsApp si hay nuevas alertas.</div>
+            <div class="mock-avatar">🤖</div>
+            <div class="mock-bubble">✅ Resumen enviado a <strong>estudio@contabilidad.com</strong>. También te avisaré por WhatsApp si hay nuevas alertas.</div>
           </div>
         </div>
       </div>
@@ -296,7 +292,7 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? ALERTS BAND �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- ALERTS BAND -->
 <div class="alerts-band">
   <div class="container">
     <div class="alerts-row">
@@ -308,21 +304,21 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
         </div>
       </div>
       <div class="alert-item">
-        <div class="alert-icon">�Y".</div>
+        <div class="alert-icon">📅</div>
         <div>
           <div class="alert-num">5 días</div>
           <div class="alert-label">Plazo típico para responder esquelas SUNAT</div>
         </div>
       </div>
       <div class="alert-item">
-        <div class="alert-icon">�Y'�</div>
+        <div class="alert-icon">📊</div>
         <div>
           <div class="alert-num">50% UIT</div>
           <div class="alert-label">Multa por no llevar contabilidad según exige la ley</div>
         </div>
       </div>
       <div class="alert-item">
-        <div class="alert-icon">�Ys�</div>
+        <div class="alert-icon">📈</div>
         <div>
           <div class="alert-num">+30%</div>
           <div class="alert-label">Intereses adicionales si la deuda entra a cobranza coactiva</div>
@@ -332,42 +328,42 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </div>
 
-<!-- �"?�"? BENEFICIOS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- BENEFICIOS -->
 <section class="section" id="beneficios">
   <div class="container">
     <div class="text-center">
-      <div class="tag">�o� Beneficios</div>
+      <div class="tag">✅ Beneficios</div>
       <h2 class="section-title">¿Por qué automatizar tu buzón SUNAT?</h2>
       <p class="section-sub">Cada día que no revisas el buzón SOL, SUNAT puede estar contando plazos. Dashbot lo hace por ti, en tiempo real.</p>
     </div>
     <div class="grid-3">
       <div class="feat-card">
-        <div class="feat-icon red">�Y""</div>
+        <div class="feat-icon green">🔔</div>
         <div class="feat-title">Alertas Instantáneas</div>
         <div class="feat-text">Detecta notificaciones urgentes (cobranzas coactivas, citaciones, baja de oficio) y te avisa al instante por correo o WhatsApp antes de que venzan los plazos.</div>
       </div>
       <div class="feat-card">
-        <div class="feat-icon blue">�Y-,️</div>
+        <div class="feat-icon navy">🏢</div>
         <div class="feat-title">Centralización Total</div>
         <div class="feat-text">Consolida todas las notificaciones del buzón SOL en una interfaz tipo chat, clara y ordenada. Sin ingresar a SUNAT manualmente cada día.</div>
       </div>
       <div class="feat-card">
-        <div class="feat-icon green">�o.</div>
+        <div class="feat-icon green">✨</div>
         <div class="feat-title">Resumen Ejecutivo IA</div>
         <div class="feat-text">Genera automáticamente un resumen ejecutivo diario con lo más importante: urgencias, plazos próximos y acciones recomendadas por inteligencia artificial.</div>
       </div>
       <div class="feat-card">
-        <div class="feat-icon amber">�Y"Z</div>
+        <div class="feat-icon amber">📎</div>
         <div class="feat-title">Adjuntos en un Click</div>
         <div class="feat-text">Descarga y organiza los PDFs adjuntos de cada notificación directamente desde el chat, sin navegar por el complejo portal SOL.</div>
       </div>
       <div class="feat-card">
-        <div class="feat-icon red">�Y"'</div>
+        <div class="feat-icon green">🔒</div>
         <div class="feat-title">Seguridad Garantizada</div>
         <div class="feat-text">Las credenciales SOL nunca se almacenan en disco. Solo existen en memoria durante la sesión activa y se eliminan al cerrar sesión.</div>
       </div>
       <div class="feat-card">
-        <div class="feat-icon blue">�Y"S</div>
+        <div class="feat-icon navy">📊</div>
         <div class="feat-title">Trazabilidad Completa</div>
         <div class="feat-text">Registro automático de cada sincronización, fecha de lectura, notificaciones vistas y acciones tomadas. Historial disponible para auditorías.</div>
       </div>
@@ -375,46 +371,46 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? RIESGOS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- RIESGOS -->
 <section class="risk-section section" id="riesgos">
   <div class="container">
     <div class="text-center" style="margin-bottom:48px">
-      <div class="tag" style="background:rgba(239,68,68,.15);color:#fca5a5;border-color:rgba(239,68,68,.3)">�s�️ Riesgos</div>
+      <div class="tag" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.9);border-color:rgba(255,255,255,.2)">⚠️ Riesgos</div>
       <h2 class="section-title" style="color:white">Lo que pasa cuando no lees<br>las notificaciones de SUNAT</h2>
       <p class="section-sub" style="color:rgba(255,255,255,.6)">El buzón SOL tiene fuerza legal. Ignorarlo equivale a no responder a SUNAT, y las consecuencias son graves.</p>
     </div>
     <div class="grid-3">
       <div class="risk-card">
-        <div class="risk-card-icon">�s-️</div>
+        <div class="risk-card-icon">⚖️</div>
         <div class="risk-card-title">Notificación con Efectos Legales</div>
         <div class="risk-card-text">Desde 2020, el buzón SOL tiene la misma validez que una notificación física. No abrir el mensaje no te exime de cumplir el plazo.</div>
       </div>
       <div class="risk-card">
-        <div class="risk-card-icon">�Y�>️</div>
+        <div class="risk-card-icon">🏦</div>
         <div class="risk-card-title">Cobranza Coactiva Automática</div>
         <div class="risk-card-text">Si no respondes a una resolución de determinación, SUNAT inicia embargo de cuentas y retención de bienes sin aviso adicional.</div>
         <div class="risk-card-amount">+30%</div>
         <div class="risk-card-label">Intereses adicionales en coactiva</div>
       </div>
       <div class="risk-card">
-        <div class="risk-card-icon">�Y"?</div>
+        <div class="risk-card-icon">📄</div>
         <div class="risk-card-title">Baja de RUC de Oficio</div>
         <div class="risk-card-text">SUNAT puede dar de baja provisional tu inscripción sin que te enteres, bloqueando emisión de facturas y acceso a crédito fiscal.</div>
       </div>
       <div class="risk-card">
-        <div class="risk-card-icon">�Y"�</div>
+        <div class="risk-card-icon">🔍</div>
         <div class="risk-card-title">Apertura de Fiscalización</div>
         <div class="risk-card-text">Una citación no atendida activa automáticamente el proceso de fiscalización, que puede incluir revisión de hasta 4 años tributarios.</div>
         <div class="risk-card-amount">4 años</div>
         <div class="risk-card-label">Alcance de la fiscalización</div>
       </div>
       <div class="risk-card">
-        <div class="risk-card-icon">�Y'�</div>
+        <div class="risk-card-icon">📉</div>
         <div class="risk-card-title">Pérdida del Régimen Tributario</div>
         <div class="risk-card-text">Incumplimientos reiterados pueden forzar el cambio al Régimen General con sus mayores obligaciones formales y tasas impositivas.</div>
       </div>
       <div class="risk-card">
-        <div class="risk-card-icon">�Y~�</div>
+        <div class="risk-card-icon">👥</div>
         <div class="risk-card-title">Responsabilidad del Contador</div>
         <div class="risk-card-text">Si el cliente sufre multas por notificaciones no atendidas, la responsabilidad recae sobre el estudio contable encargado de la supervisión.</div>
       </div>
@@ -422,16 +418,16 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? MULTAS �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- MULTAS -->
 <section class="section" id="multas" style="background:var(--gray-50)">
   <div class="container">
     <div class="grid-2">
       <div>
-        <div class="tag badge-accent">�Y'� Tabla de Multas</div>
+        <div class="tag" style="background:var(--accent-lt);color:#92400e;border-color:#fde68a">💰 Tabla de Multas</div>
         <h2 class="section-title">Multas frecuentes que Dashbot<br>te ayuda a evitar</h2>
         <p style="font-size:15px;color:var(--gray-600);margin-bottom:28px;line-height:1.7">Las multas del Código Tributario se calculan en función de la UIT vigente (S/ 5,350 en 2024). Un solo descuido puede costar miles de soles.</p>
-        <div style="background:var(--red-lt);border:1px solid #fecdcd;border-radius:var(--r-sm);padding:16px 20px;font-size:14px;color:#9e0d24;line-height:1.7">
-          �s�️ <strong>Importante:</strong> Las multas tienen gradualidad. Si te auto-detectas antes de que SUNAT te notifique, la rebaja puede llegar al 95%. Dashbot te avisa a tiempo.
+        <div style="background:var(--green-lt);border:1px solid #b3e6cc;border-radius:var(--r-sm);padding:16px 20px;font-size:14px;color:var(--green-dk);line-height:1.7">
+          ⚠️ <strong>Importante:</strong> Las multas tienen gradualidad. Si te auto-detectas antes de que SUNAT te notifique, la rebaja puede llegar al 95%. Dashbot te avisa a tiempo.
         </div>
       </div>
       <div>
@@ -447,7 +443,7 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
             <tr>
               <td>No presentar declaración mensual</td>
               <td>Art. 176 N°1</td>
-              <td class="multa-high">S/ 535 �?" S/ 6,688</td>
+              <td class="multa-high">S/ 535 – S/ 6,688</td>
             </tr>
             <tr>
               <td>Presentar declaración fuera de plazo</td>
@@ -487,19 +483,19 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? C�"MO FUNCIONA �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- CÓMO FUNCIONA -->
 <section class="section" id="como-funciona">
   <div class="container">
     <div class="grid-2">
       <div>
-        <div class="tag">�sT️ Proceso</div>
+        <div class="tag">⚙️ Proceso</div>
         <h2 class="section-title">Automatización en<br>4 pasos simples</h2>
         <div class="steps" style="margin-top:32px">
           <div class="step">
             <div class="step-num">1</div>
             <div class="step-body">
               <div class="step-title">Ingresa tus credenciales SOL</div>
-              <div class="step-text">RUC, usuario y contraseña de SUNAT SOL. Nunca se guardan en disco �?" solo en memoria durante tu sesión activa.</div>
+              <div class="step-text">RUC, usuario y contraseña de SUNAT SOL. Nunca se guardan en disco — solo en memoria durante tu sesión activa.</div>
             </div>
           </div>
           <div class="step">
@@ -526,24 +522,24 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
         </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:16px">
-        <div style="background:linear-gradient(135deg,var(--navy) 0%,#1e3a6e 100%);border-radius:var(--r);padding:28px;color:white">
+        <div style="background:linear-gradient(135deg,#3d1515 0%,#5c1f1f 100%);border-radius:var(--r);padding:28px;color:white">
           <div style="font-size:13px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Sin Dashbot (Manual)</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>�O</span> Ingresar a SUNAT todos los días</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>�O</span> Revisar cada mensaje manualmente</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>�O</span> Riesgo de perder plazos críticos</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>�O</span> Sin historial estructurado</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>�O</span> Multas por descuido humano</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Ingresar a SUNAT todos los días</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Revisar cada mensaje manualmente</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Riesgo de perder plazos críticos</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Sin historial estructurado</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Multas por descuido humano</div>
           </div>
         </div>
         <div style="background:linear-gradient(135deg,#0f4c2a 0%,#16643a 100%);border-radius:var(--r);padding:28px;color:white">
           <div style="font-size:13px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Con Dashbot (Automático)</div>
           <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>�o.</span> Sincronización automática 24/7</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>�o.</span> Alertas instantáneas por correo y WhatsApp</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>�o.</span> Urgencias priorizadas automáticamente</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>�o.</span> Historial trazable para auditorías</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>�o.</span> Cero multas por notificaciones perdidas</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Sincronización automática 24/7</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Alertas instantáneas por correo y WhatsApp</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Urgencias priorizadas automáticamente</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Historial trazable para auditorías</div>
+            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Cero multas por notificaciones perdidas</div>
           </div>
         </div>
       </div>
@@ -551,11 +547,11 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? PLANES �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- PLANES -->
 <section class="section" id="planes" style="background:var(--gray-50)">
   <div class="container">
     <div class="text-center">
-      <div class="tag">�Y'� Planes</div>
+      <div class="tag">💎 Planes</div>
       <h2 class="section-title">Planes para contadores y estudios en Perú</h2>
       <p class="section-sub">Sin contrato anual forzoso. Cancela cuando quieras. Plan anual disponible con 2 meses bonificados.</p>
     </div>
@@ -590,7 +586,7 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
           <li>Historial 12 meses</li>
           <li>Soporte prioritario</li>
         </ul>
-        <a href="#contacto" class="btn btn-red" style="width:100%;justify-content:center">Comenzar ahora</a>
+        <a href="#contacto" class="btn btn-green" style="width:100%;justify-content:center">Comenzar ahora</a>
         <p class="plan-note">Sin tarjeta de crédito requerida</p>
       </div>
       <div class="plan-card">
@@ -613,21 +609,21 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
       </div>
     </div>
     <div style="background:white;border:1px solid var(--gray-200);border-radius:var(--r);padding:24px 32px;margin-top:32px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-      <div style="font-size:22px">�Y��</div>
+      <div style="font-size:22px">🏢</div>
       <div style="flex:1">
         <div style="font-weight:700;color:var(--navy);margin-bottom:4px">¿Tienes más de 200 RUCs o necesitas integración especial?</div>
         <div style="font-size:14px;color:var(--gray-600)">Conversamos y diseñamos un plan a tu medida. Sin compromisos.</div>
       </div>
-      <a href="https://wa.me/51999999999?text=Hola%2C%20quiero%20información%20sobre%20Dashbot" class="btn btn-wa" target="_blank">�Y'� Hablar por WhatsApp</a>
+      <a href="https://wa.me/51999999999?text=Hola%2C%20quiero%20información%20sobre%20Dashbot" class="btn btn-wa" target="_blank">💬 Hablar por WhatsApp</a>
     </div>
   </div>
 </section>
 
-<!-- �"?�"? FAQ �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- FAQ -->
 <section class="section" id="faq">
   <div class="container" style="max-width:780px">
     <div class="text-center">
-      <div class="tag">�" FAQ</div>
+      <div class="tag">❓ FAQ</div>
       <h2 class="section-title">Preguntas frecuentes</h2>
     </div>
     <div style="margin-top:40px">
@@ -659,19 +655,19 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- �"?�"? CTA BANNER �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- CTA BANNER -->
 <section class="cta-banner" id="contacto">
   <div class="container">
     <h2>¿Listo para tener el buzón SUNAT bajo control?</h2>
-    <p>�snete a los estudios contables que ya automatizan con Dashbot.<br>Prueba gratis por 14 días, sin tarjeta de crédito.</p>
+    <p>Únete a los estudios contables que ya automatizan con Dashbot.<br>Prueba gratis por 14 días, sin tarjeta de crédito.</p>
     <div class="cta-actions">
-      <a href="/" class="btn btn-lg" style="background:white;color:var(--red)">�Ys? Probar Dashbot gratis</a>
-      <a href="https://wa.me/51999999999?text=Hola%2C%20quiero%20una%20demo%20de%20Dashbot" class="btn btn-wa btn-lg" target="_blank">�Y'� Solicitar demo por WhatsApp</a>
+      <a href="/" class="btn btn-lg" style="background:var(--green);color:white">🚀 Probar Dashbot gratis</a>
+      <a href="https://wa.me/51999999999?text=Hola%2C%20quiero%20una%20demo%20de%20Dashbot" class="btn btn-wa btn-lg" target="_blank">💬 Solicitar demo por WhatsApp</a>
     </div>
   </div>
 </section>
 
-<!-- �"?�"? FOOTER �"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"?�"? -->
+<!-- FOOTER -->
 <footer>
   <div class="container">
     <div class="footer-grid">
@@ -701,27 +697,22 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
     </div>
     <div class="footer-bottom">
       <span>© 2024 Dashcont Technology System Automatizacion SAC. Todos los derechos reservados.</span>
-      <span>Hecho en Perú �Y?��Y?� para contadores peruanos</span>
+      <span>Hecho en Perú 🇵🇪 para contadores peruanos</span>
     </div>
   </div>
 </footer>
 
 <!-- WhatsApp flotante -->
-<a class="wa-float" href="https://wa.me/51999999999?text=Hola%2C%20quiero%20información%20sobre%20Dashbot" target="_blank" title="Contactar por WhatsApp">�Y'�</a>
+<a class="wa-float" href="https://wa.me/51999999999?text=Hola%2C%20quiero%20información%20sobre%20Dashbot" target="_blank" title="Contactar por WhatsApp">💬</a>
 
 <script>
-// FAQ toggle ya está manejado por onclick en el HTML
-// Navbar active state
 const sections = document.querySelectorAll('section[id]');
 const navLinks = document.querySelectorAll('.nav-links a');
 window.addEventListener('scroll',()=>{
   let cur='';
   sections.forEach(s=>{ if(window.scrollY>=s.offsetTop-120) cur=s.id; });
-  navLinks.forEach(a=>{ a.style.color=a.getAttribute('href')==='#'+cur?'var(--red)':''; });
+  navLinks.forEach(a=>{ a.style.color=a.getAttribute('href')==='#'+cur?'var(--green)':''; });
 });
 </script>
 </body>
 </html>
-
-
-
