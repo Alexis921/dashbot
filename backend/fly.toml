@@ -1,0 +1,25 @@
+app = "dashbot-backend"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ALLOWED_ORIGINS = "https://dashbot.pro,https://www.dashbot.pro,https://frontend-ashy-nine-49.vercel.app"
+  SECRET_KEY = "dashbot2024xsecret"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

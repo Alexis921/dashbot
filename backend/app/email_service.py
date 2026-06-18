@@ -67,7 +67,8 @@ def build_html_summary(notifications: list, ruc: str) -> str:
   {"<h3 style='color:#856404;margin:20px 0 10px'>📬 Otras Notificaciones</h3><table width='100%' style='border-collapse:collapse'><tr style='background:#6c757d;color:white'><th style='padding:10px;text-align:left'>Asunto</th><th style='padding:10px;text-align:left'>Referencia</th><th style='padding:10px;text-align:left'>Fecha</th><th style='padding:10px;text-align:left'>Adj.</th></tr>" + normal_rows + "</table>" if normal else ""}
 
   <div style="background:#e9ecef;padding:15px;border-radius:0 0 8px 8px;margin-top:20px;font-size:12px;color:#666">
-    Generado automáticamente por BOT SUNAT · No responder este correo.
+    Generado automáticamente por <strong>Dashbot</strong> · Dashcont Technology System Automatizacion SAC<br>
+    Soporte: <a href="mailto:soporte@dashbot.pro">soporte@dashbot.pro</a> · <a href="https://dashbot.pro">dashbot.pro</a>
   </div>
 </body>
 </html>"""
@@ -85,7 +86,9 @@ async def send_email_summary(to_email: str, notifications: list, ruc: str) -> di
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"📋 Resumen Buzón SUNAT - RUC {ruc} - {datetime.now().strftime('%d/%m/%Y')}"
-        msg["From"] = smtp_user
+        from_name = os.getenv("SMTP_FROM_NAME", "Dashbot - Dashcont Technology")
+        from_addr = os.getenv("SMTP_FROM", smtp_user)
+        msg["From"] = f"{from_name} <{from_addr}>"
         msg["To"] = to_email
 
         urgent_count = sum(1 for n in notifications if n.get("is_urgent"))
@@ -99,11 +102,16 @@ async def send_email_summary(to_email: str, notifications: list, ruc: str) -> di
         msg.attach(MIMEText(text_body, "plain", "utf-8"))
         msg.attach(MIMEText(build_html_summary(notifications, ruc), "html", "utf-8"))
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, to_email, msg.as_string())
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.ehlo()
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
 
         return {"success": True, "error": None}
 
