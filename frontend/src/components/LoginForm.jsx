@@ -87,7 +87,7 @@ export default function LoginForm({ onLogin }) {
           🧪 Probar con datos de demostración
         </button>
 
-        <a href="/landing.html" className="back-home">← Volver a la página principal</a>
+        <a href="/" className="back-home">← Volver a la página principal</a>
       </div>
     </div>
   )
