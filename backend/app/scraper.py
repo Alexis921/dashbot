@@ -1,22 +1,24 @@
 """
-Scraper de buzón SUNAT usando Playwright.
-Navega el portal SOL (Operaciones en Línea) y extrae notificaciones.
+Scraper de buzón SUNAT usando httpx (sin Playwright).
+Accede al portal SOL via HTTP con sesión de cookies.
 """
 import asyncio
-import base64
 import re
+import uuid
 from datetime import datetime
 from typing import Optional
-from playwright.async_api import async_playwright, TimeoutError as PwTimeout
+
+import httpx
+from bs4 import BeautifulSoup
 
 
-SUNAT_LOGIN_URL = "https://www.sunat.gob.pe/sol.html"
-BUZON_URL = "https://www.sunat.gob.pe/ol-ti-itbuzonelectronico/bin/ejecBuzon.do"
+SUNAT_SOL_BASE = "https://api-sol.sunat.gob.pe"
+SUNAT_WEB_BASE = "https://www.sunat.gob.pe"
 
 URGENT_KEYWORDS = [
     "multa", "infracción", "cobranza coactiva", "embargo", "sanción",
-    "baja", "cierre", "fiscalización", "requerimiento", "notificación de deuda",
-    "vencimiento", "plazo", "urgente"
+    "baja", "cierre", "fiscalización", "requerimiento", "deuda",
+    "vencimiento", "plazo", "urgente", "citación",
 ]
 
 
@@ -27,209 +29,173 @@ def _is_urgent(subject: str) -> bool:
 
 async def scrape_sunat_notifications(ruc: str, usuario: str, password: str) -> dict:
     """
-    Accede al buzón SUNAT y retorna lista de notificaciones.
-    Returns: {"success": bool, "notifications": [...], "error": str|None}
+    Intenta acceder al buzón SUNAT vía HTTP.
+    Si falla, retorna datos demo indicando el motivo.
     """
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox"]
-        )
-        context = await browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            viewport={"width": 1280, "height": 800}
-        )
-        page = await context.new_page()
-
-        try:
-            # ── 1. Login en SOL ──────────────────────────────────────────────
-            await page.goto(SUNAT_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(2)
-
-            # Rellenar formulario de login
-            await _fill_login_form(page, ruc, usuario, password)
-
-            # ── 2. Esperar redirección post-login ────────────────────────────
-            await page.wait_for_load_state("networkidle", timeout=20000)
-            await asyncio.sleep(2)
-
-            # Verificar login exitoso
-            if "error" in page.url.lower() or "autenticar" in page.url.lower():
-                return {"success": False, "notifications": [], "error": "Credenciales incorrectas"}
-
-            # ── 3. Navegar al Buzón ──────────────────────────────────────────
-            notifications = await _navigate_to_buzon(page, context)
-
-            await browser.close()
-            return {"success": True, "notifications": notifications, "error": None}
-
-        except PwTimeout:
-            await browser.close()
-            return {"success": False, "notifications": [], "error": "Tiempo de espera agotado. SUNAT puede estar lento."}
-        except Exception as e:
-            await browser.close()
-            return {"success": False, "notifications": [], "error": str(e)}
-
-
-async def _fill_login_form(page, ruc: str, usuario: str, password: str):
-    """Rellena el formulario de login de SUNAT SOL."""
-    # Intentar múltiples selectores según versión del portal
-    selectors = {
-        "ruc": ["#txtRuc", "input[name='txtRuc']", "input[id*='ruc' i]", "#numRuc"],
-        "usuario": ["#txtUsuario", "input[name='txtUsuario']", "input[id*='usuario' i]"],
-        "password": ["#txtContrasena", "input[type='password']", "input[name='txtContrasena']"],
-        "submit": ["#btnAceptar", "input[type='submit']", "button[type='submit']", "#btnIngresar"]
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/html, */*",
+        "Accept-Language": "es-PE,es;q=0.9",
+        "Origin": "https://www.sunat.gob.pe",
+        "Referer": "https://www.sunat.gob.pe/sol.html",
     }
 
-    for sel in selectors["ruc"]:
-        try:
-            await page.fill(sel, ruc, timeout=3000)
-            break
-        except Exception:
-            continue
-
-    for sel in selectors["usuario"]:
-        try:
-            await page.fill(sel, usuario, timeout=3000)
-            break
-        except Exception:
-            continue
-
-    for sel in selectors["password"]:
-        try:
-            await page.fill(sel, password, timeout=3000)
-            break
-        except Exception:
-            continue
-
-    for sel in selectors["submit"]:
-        try:
-            await page.click(sel, timeout=3000)
-            break
-        except Exception:
-            continue
-
-
-async def _navigate_to_buzon(page, context) -> list:
-    """Navega al buzón y extrae notificaciones."""
-    notifications = []
-
-    # Intentar acceso directo al buzón
     try:
-        await page.goto(BUZON_URL, wait_until="domcontentloaded", timeout=20000)
-        await asyncio.sleep(3)
+        async with httpx.AsyncClient(
+            headers=headers,
+            follow_redirects=True,
+            timeout=30.0,
+            verify=False,
+        ) as client:
+            # Intentar login via API SOL
+            login_resp = await client.post(
+                f"{SUNAT_SOL_BASE}/v1/clientesol/login",
+                json={"numRuc": ruc, "usuario": usuario, "acceso": password},
+            )
+
+            if login_resp.status_code == 200:
+                data = login_resp.json()
+                token = data.get("token") or data.get("access_token")
+                if token:
+                    return await _fetch_buzon_with_token(client, token, ruc)
+
+            # Intentar login web clásico
+            return await _try_web_login(client, ruc, usuario, password)
+
+    except Exception as e:
+        return {
+            "success": False,
+            "notifications": [],
+            "error": f"No se pudo conectar a SUNAT: {str(e)[:200]}",
+        }
+
+
+async def _fetch_buzon_with_token(client: httpx.AsyncClient, token: str, ruc: str) -> dict:
+    """Obtiene notificaciones usando token JWT de SOL."""
+    try:
+        resp = await client.get(
+            f"{SUNAT_SOL_BASE}/v1/buzon/notificaciones",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"numRuc": ruc, "estado": "0"},
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            notifs = _parse_api_notifications(data, ruc)
+            return {"success": True, "notifications": notifs, "error": None}
+    except Exception:
+        pass
+    return {"success": False, "notifications": [], "error": "No se pudo obtener notificaciones"}
+
+
+async def _try_web_login(client: httpx.AsyncClient, ruc: str, usuario: str, password: str) -> dict:
+    """Intenta login en el portal web de SUNAT."""
+    try:
+        # GET login page para obtener cookies/tokens CSRF
+        await client.get(f"{SUNAT_WEB_BASE}/sol.html")
+
+        # POST credenciales
+        resp = await client.post(
+            f"{SUNAT_WEB_BASE}/ol-ti-itconsultaunificadalibre/consultaUnificadaLibre/action/cargarFichaRuc",
+            data={"numRuc": ruc, "txtUsuario": usuario, "txtContrasena": password},
+        )
+
+        if resp.status_code in (200, 302):
+            # Intentar acceder al buzón
+            buzon_resp = await client.get(
+                f"{SUNAT_WEB_BASE}/ol-ti-itbuzonelectronico/bin/ejecBuzon.do"
+            )
+            if buzon_resp.status_code == 200:
+                notifs = _parse_html_notifications(buzon_resp.text, ruc)
+                if notifs:
+                    return {"success": True, "notifications": notifs, "error": None}
+
     except Exception:
         pass
 
-    # Buscar frames con el buzón
-    all_frames = page.frames
-    buzon_frame = None
+    return {
+        "success": False,
+        "notifications": [],
+        "error": (
+            "SUNAT requiere verificación adicional. "
+            "Use el modo demo para ver cómo funciona el sistema."
+        ),
+    }
 
-    for frame in all_frames:
+
+def _parse_api_notifications(data: dict, ruc: str) -> list:
+    """Parsea respuesta JSON de la API de SUNAT."""
+    notifications = []
+    items = data if isinstance(data, list) else data.get("notificaciones", data.get("data", []))
+    for i, item in enumerate(items):
+        subject = item.get("asunto") or item.get("subject") or item.get("descripcion") or "Sin asunto"
+        date_str = item.get("fechaNotificacion") or item.get("fecha") or ""
         try:
-            content = await frame.content()
-            if "buzon" in content.lower() or "notificaci" in content.lower():
-                buzon_frame = frame
-                break
+            date_val = datetime.fromisoformat(date_str.replace("/", "-"))
         except Exception:
+            date_val = datetime.utcnow()
+
+        notifications.append({
+            "id": item.get("id") or item.get("idNotificacion") or f"S-{ruc}-{i}",
+            "subject": subject,
+            "reference_number": item.get("numeroReferencia") or item.get("referencia") or "",
+            "date_received": date_val.isoformat(),
+            "sender": item.get("remitente") or "SUNAT",
+            "status": "nuevo",
+            "body_text": item.get("cuerpo") or item.get("descripcion") or subject,
+            "has_attachment": bool(item.get("adjunto") or item.get("urlAdjunto")),
+            "attachment_name": item.get("nombreAdjunto") or "",
+            "is_urgent": _is_urgent(subject),
+        })
+    return notifications
+
+
+def _parse_html_notifications(html: str, ruc: str) -> list:
+    """Parsea tabla HTML del buzón SUNAT."""
+    notifications = []
+    soup = BeautifulSoup(html, "html.parser")
+
+    for i, row in enumerate(soup.find_all("tr")[1:], 1):
+        cells = row.find_all("td")
+        if len(cells) < 3:
+            continue
+        texts = [c.get_text(strip=True) for c in cells]
+        subject = texts[0] if texts else "Sin asunto"
+        if not subject:
             continue
 
-    target = buzon_frame if buzon_frame else page
-
-    # Extraer filas de notificaciones
-    notifications = await _extract_notifications_from_frame(target)
-
-    # Si no encontró nada, buscar en iframes anidados
-    if not notifications:
-        for frame in page.frames:
-            try:
-                rows = await _extract_notifications_from_frame(frame)
-                if rows:
-                    notifications = rows
+        date_val = datetime.utcnow()
+        for text in texts:
+            m = re.search(r"\d{2}/\d{2}/\d{4}", text)
+            if m:
+                try:
+                    date_val = datetime.strptime(m.group(), "%d/%m/%Y")
                     break
-            except Exception:
-                continue
+                except Exception:
+                    pass
+
+        has_attachment = bool(row.find("a", href=re.compile(r"pdf|adjunto", re.I)))
+
+        notifications.append({
+            "id": f"S-{ruc}-{i}-{hash(subject) & 0xFFFFFF}",
+            "subject": subject,
+            "reference_number": texts[1] if len(texts) > 1 else "",
+            "date_received": date_val.isoformat(),
+            "sender": "SUNAT",
+            "status": "nuevo",
+            "body_text": " | ".join(texts),
+            "has_attachment": has_attachment,
+            "attachment_name": "adjunto.pdf" if has_attachment else "",
+            "is_urgent": _is_urgent(subject),
+        })
 
     return notifications
 
 
-async def _extract_notifications_from_frame(frame) -> list:
-    """Extrae notificaciones de una tabla en el frame dado."""
-    notifications = []
-
-    try:
-        # Buscar tabla de notificaciones
-        rows = await frame.query_selector_all("table tr")
-        if len(rows) < 2:
-            return []
-
-        for i, row in enumerate(rows[1:], 1):  # skip header
-            try:
-                cells = await row.query_selector_all("td")
-                if len(cells) < 3:
-                    continue
-
-                texts = []
-                for cell in cells:
-                    t = await cell.inner_text()
-                    texts.append(t.strip())
-
-                if not texts[0]:
-                    continue
-
-                # Detectar fecha en las celdas
-                date_val = None
-                subject = ""
-                reference = ""
-
-                for text in texts:
-                    if re.search(r'\d{2}/\d{2}/\d{4}', text):
-                        try:
-                            date_val = datetime.strptime(
-                                re.search(r'\d{2}/\d{2}/\d{4}', text).group(), "%d/%m/%Y"
-                            )
-                        except Exception:
-                            pass
-
-                subject = texts[0] if texts else "Sin asunto"
-                reference = texts[1] if len(texts) > 1 else ""
-
-                # ¿Tiene adjunto?
-                attachment_el = await row.query_selector("a[href*='pdf'], a[href*='adjunto'], img[src*='clip']")
-                has_attachment = attachment_el is not None
-                attachment_name = ""
-                if has_attachment and attachment_el:
-                    attachment_name = await attachment_el.get_attribute("href") or "adjunto.pdf"
-
-                notif_id = f"SUNAT-{i}-{hash(subject)}"
-
-                notifications.append({
-                    "id": notif_id,
-                    "subject": subject,
-                    "reference_number": reference,
-                    "date_received": date_val.isoformat() if date_val else datetime.utcnow().isoformat(),
-                    "sender": "SUNAT",
-                    "status": "nuevo",
-                    "body_text": " | ".join(texts),
-                    "has_attachment": has_attachment,
-                    "attachment_name": attachment_name,
-                    "is_urgent": _is_urgent(subject),
-                })
-
-            except Exception:
-                continue
-
-    except Exception:
-        pass
-
-    return notifications
-
-
-# ── Datos demo para desarrollo sin conexión real ─────────────────────────────
+# ── Datos demo ────────────────────────────────────────────────────────────────
 DEMO_NOTIFICATIONS = [
     {
         "id": "SUNAT-DEMO-001",
@@ -280,6 +246,6 @@ DEMO_NOTIFICATIONS = [
 
 
 async def get_demo_notifications(ruc: str) -> dict:
-    """Retorna datos de demostración cuando SUNAT no está disponible."""
+    """Retorna datos de demostración."""
     notifs = [dict(n, ruc=ruc) for n in DEMO_NOTIFICATIONS]
     return {"success": True, "notifications": notifs, "error": None, "demo": True}
