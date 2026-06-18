@@ -13,6 +13,7 @@ URGENT_KEYWORDS = [
     "resolución de determinación", "resolución de multa", "orden de pago",
 ]
 
+SUNAT_SOL_URL   = "https://www.sunat.gob.pe/sol.html"
 SUNAT_LOGIN_URL = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm"
 SUNAT_BUZON_URL = "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico/bin/ejecBuzon.do"
 
@@ -190,11 +191,12 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # 1. Navegar y esperar que JS cargue completamente
-        await page.goto(SUNAT_LOGIN_URL, wait_until="networkidle", timeout=30000)
-        await page.wait_for_timeout(3000)
+        # 1. Navegar a la página pública de SOL (tiene el formulario real de login)
+        #    AutenticaMenuInternet.htm es el MENÚ post-login, no el formulario
+        await page.goto(SUNAT_SOL_URL, wait_until="networkidle", timeout=30000)
+        await page.wait_for_timeout(2000)
 
-        # Diagnóstico de frames: detectar URL del iframe con el form real
+        # Diagnóstico de frames
         frame_urls = [f.url for f in page.frames if f.url and f.url != "about:blank"]
 
         # 2. Buscar el frame/página que tiene el formulario de login
