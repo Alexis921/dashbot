@@ -12,8 +12,10 @@ import httpx
 from bs4 import BeautifulSoup
 
 
-SUNAT_SOL_BASE = "https://api-sol.sunat.gob.pe"
-SUNAT_WEB_BASE = "https://www.sunat.gob.pe"
+SUNAT_SOL_BASE  = "https://api-sol.sunat.gob.pe"
+SUNAT_WEB_BASE  = "https://www.sunat.gob.pe"
+SUNAT_EMENU     = "https://e-menu.sunat.gob.pe"
+SUNAT_BUZON_WEB = "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico"
 
 URGENT_KEYWORDS = [
     "multa", "infracción", "cobranza coactiva", "embargo", "sanción",
@@ -29,49 +31,81 @@ def _is_urgent(subject: str) -> bool:
 
 async def scrape_sunat_notifications(ruc: str, usuario: str, password: str) -> dict:
     """
-    Intenta acceder al buzón SUNAT vía HTTP.
-    Si falla, retorna datos demo indicando el motivo.
+    Intenta acceder al buzón SUNAT vía HTTP/API.
+    Retorna success=False con error descriptivo si no puede conectar.
     """
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
+            "Chrome/124.0.0.0 Safari/537.36"
         ),
         "Accept": "application/json, text/html, */*",
-        "Accept-Language": "es-PE,es;q=0.9",
+        "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
         "Origin": "https://www.sunat.gob.pe",
         "Referer": "https://www.sunat.gob.pe/sol.html",
     }
+
+    errors = []
 
     try:
         async with httpx.AsyncClient(
             headers=headers,
             follow_redirects=True,
-            timeout=30.0,
+            timeout=35.0,
             verify=False,
         ) as client:
-            # Intentar login via API SOL
-            login_resp = await client.post(
-                f"{SUNAT_SOL_BASE}/v1/clientesol/login",
-                json={"numRuc": ruc, "usuario": usuario, "acceso": password},
-            )
+            # 1) Intentar login via API SOL REST
+            try:
+                login_resp = await client.post(
+                    f"{SUNAT_SOL_BASE}/v1/clientesol/login",
+                    json={"numRuc": ruc, "usuario": usuario, "acceso": password},
+                    headers={**headers, "Content-Type": "application/json"},
+                )
+                if login_resp.status_code == 200:
+                    data = login_resp.json()
+                    token = data.get("token") or data.get("access_token") or data.get("strToken")
+                    if token:
+                        result = await _fetch_buzon_with_token(client, token, ruc)
+                        if result["success"]:
+                            return result
+                        errors.append(f"Token API: {result.get('error','sin datos')}")
+                    elif data.get("numRespuesta") not in (None, "0000"):
+                        errors.append(f"API SOL: código {data.get('numRespuesta')} - {data.get('desRespuesta','credenciales incorrectas')}")
+                    else:
+                        errors.append(f"API SOL: sin token en respuesta - {str(data)[:100]}")
+                else:
+                    errors.append(f"API SOL HTTP {login_resp.status_code}")
+            except Exception as e:
+                errors.append(f"API SOL: {str(e)[:100]}")
 
-            if login_resp.status_code == 200:
-                data = login_resp.json()
-                token = data.get("token") or data.get("access_token")
-                if token:
-                    return await _fetch_buzon_with_token(client, token, ruc)
-
-            # Intentar login web clásico
-            return await _try_web_login(client, ruc, usuario, password)
+            # 2) Intentar login web clásico con manejo de popup
+            result = await _try_web_login(client, ruc, usuario, password)
+            if result["success"]:
+                return result
+            errors.append(result.get("error", "login web fallido"))
 
     except Exception as e:
-        return {
-            "success": False,
-            "notifications": [],
-            "error": f"No se pudo conectar a SUNAT: {str(e)[:200]}",
-        }
+        errors.append(f"Conexión: {str(e)[:150]}")
+
+    return {
+        "success": False,
+        "notifications": [],
+        "error": (
+            "No se pudo conectar al buzón SUNAT. "
+            f"Detalles: {' | '.join(errors[:2])}"
+        ),
+        "error_type": _classify_error(errors),
+    }
+
+
+def _classify_error(errors: list) -> str:
+    joined = " ".join(errors).lower()
+    if "credencial" in joined or "0001" in joined or "incorrecto" in joined:
+        return "credenciales"
+    if "timeout" in joined or "connect" in joined:
+        return "timeout"
+    return "sunat_no_disponible"
 
 
 async def _fetch_buzon_with_token(client: httpx.AsyncClient, token: str, ruc: str) -> dict:
@@ -92,37 +126,69 @@ async def _fetch_buzon_with_token(client: httpx.AsyncClient, token: str, ruc: st
 
 
 async def _try_web_login(client: httpx.AsyncClient, ruc: str, usuario: str, password: str) -> dict:
-    """Intenta login en el portal web de SUNAT."""
+    """Intenta login en el portal web de SUNAT y navega al buzón electrónico."""
     try:
-        # GET login page para obtener cookies/tokens CSRF
-        await client.get(f"{SUNAT_WEB_BASE}/sol.html")
+        # 1. Cargar página inicial para obtener cookies de sesión
+        await client.get(f"{SUNAT_WEB_BASE}/sol.html", timeout=15.0)
 
-        # POST credenciales
-        resp = await client.post(
+        # 2. Intentar login via formulario SOL
+        login_resp = await client.post(
             f"{SUNAT_WEB_BASE}/ol-ti-itconsultaunificadalibre/consultaUnificadaLibre/action/cargarFichaRuc",
-            data={"numRuc": ruc, "txtUsuario": usuario, "txtContrasena": password},
+            data={
+                "tipoAcceso": "1",
+                "accion": "cargarFichaRuc",
+                "numRuc": ruc,
+                "txtUsuario": usuario,
+                "txtContrasena": password,
+            },
+            timeout=20.0,
         )
 
-        if resp.status_code in (200, 302):
-            # Intentar acceder al buzón
-            buzon_resp = await client.get(
-                f"{SUNAT_WEB_BASE}/ol-ti-itbuzonelectronico/bin/ejecBuzon.do"
-            )
-            if buzon_resp.status_code == 200:
+        # 3. Si redirige al e-menu, el login fue exitoso
+        final_url = str(client.base_url) if hasattr(client, "base_url") else ""
+        resp_url = str(login_resp.url)
+
+        if "e-menu.sunat.gob.pe" in resp_url or login_resp.status_code in (200, 302):
+            # 4. Navegar al buzón electrónico (el popup se ignora accediendo directo)
+            buzon_url = f"{SUNAT_BUZON_WEB}/bin/ejecBuzon.do"
+            buzon_resp = await client.get(buzon_url, timeout=20.0)
+
+            if buzon_resp.status_code == 200 and len(buzon_resp.text) > 500:
                 notifs = _parse_html_notifications(buzon_resp.text, ruc)
                 if notifs:
                     return {"success": True, "notifications": notifs, "error": None}
 
-    except Exception:
-        pass
+            # 5. Si el URL directo no funciona, intentar vía e-menu
+            emenu_resp = await client.get(
+                f"{SUNAT_EMENU}/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*",
+                timeout=20.0,
+            )
+            if emenu_resp.status_code == 200:
+                # Intentar acceder al buzón desde e-menu
+                buzon2 = await client.get(
+                    f"{SUNAT_EMENU}/cl-ti-itbuzonelectronico/bin/ejecBuzon.do",
+                    timeout=20.0,
+                )
+                if buzon2.status_code == 200 and len(buzon2.text) > 500:
+                    notifs = _parse_html_notifications(buzon2.text, ruc)
+                    if notifs:
+                        return {"success": True, "notifications": notifs, "error": None}
+                    # Login exitoso pero sin datos parseables → devolver vacío con éxito
+                    if "buzón" in buzon2.text.lower() or "notificacion" in buzon2.text.lower():
+                        return {
+                            "success": True,
+                            "notifications": [],
+                            "error": None,
+                            "note": "Buzón accedido pero sin notificaciones pendientes parseables.",
+                        }
+
+    except Exception as e:
+        return {"success": False, "notifications": [], "error": f"Login web: {str(e)[:150]}"}
 
     return {
         "success": False,
         "notifications": [],
-        "error": (
-            "SUNAT requiere verificación adicional. "
-            "Use el modo demo para ver cómo funciona el sistema."
-        ),
+        "error": "SUNAT requiere autenticación con navegador completo (JavaScript). El portal SOL usa protecciones anti-bot.",
     }
 
 

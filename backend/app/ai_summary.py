@@ -73,42 +73,101 @@ async def generate_ai_summary(notifications: list) -> str:
 
 
 async def generate_notification_interpretation(notification: dict) -> str:
-    """Interpreta una notificación SUNAT específica con detalle."""
+    """Interpreta una notificación SUNAT con análisis de abogado tributarista experto."""
     subject = notification.get("subject", "")
     body = notification.get("body_text", "")
     ref = notification.get("reference_number", "")
     sender = notification.get("sender", "SUNAT")
     date = notification.get("date_received", "")[:10]
+    is_urgent = notification.get("is_urgent", False)
 
-    prompt = (
-        "Eres un experto tributario peruano. Analiza esta notificación del buzón SUNAT "
-        "y proporciona una interpretación práctica en español.\n\n"
-        f"Asunto: {subject}\n"
-        f"Remitente: {sender}\n"
-        f"Fecha: {date}\n"
-        f"Referencia: {ref}\n"
-        f"Contenido: {body}\n\n"
-        "Responde con:\n"
-        "1. ¿Qué significa esta notificación? (2-3 oraciones)\n"
-        "2. ¿Es urgente? ¿Por qué?\n"
-        "3. ¿Qué acciones debe tomar el contador? (lista corta)\n"
-        "4. ¿Hay plazos importantes?\n\n"
-        "Sé específico y práctico. Máximo 200 palabras."
-    )
+    prompt = f"""Eres el mejor abogado tributarista del Perú, con 20 años de experiencia en el Tribunal Fiscal, SUNAT y litigios tributarios. Analizas esta notificación del Buzón Electrónico SOL con precisión legal y práctica.
 
-    result = await _call_gemini(prompt, max_tokens=400) or await _call_claude(prompt, max_tokens=400)
+NOTIFICACIÓN SUNAT:
+- Asunto: {subject}
+- Remitente: {sender}
+- Fecha de notificación: {date}
+- Número de referencia: {ref}
+- Contenido: {body}
+
+Proporciona un análisis tributario completo con este formato exacto:
+
+⚖️ NATURALEZA JURÍDICA
+[Explica qué tipo de acto administrativo es, qué norma del Código Tributario o ley lo sustenta, y sus efectos legales desde la fecha de notificación en el buzón SOL]
+
+🚨 NIVEL DE RIESGO: [CRÍTICO / ALTO / MEDIO / BAJO]
+[Justifica el nivel con base legal específica]
+
+⏰ PLAZOS LEGALES
+[Lista los plazos exactos que tiene el contribuyente para responder, apelar o cumplir. Cita artículos del Código Tributario si aplica]
+
+🎯 ACCIONES INMEDIATAS (en orden de prioridad)
+1. [Acción concreta con plazo]
+2. [Acción concreta con plazo]
+3. [Acción concreta con plazo]
+
+💰 CONSECUENCIAS DE NO ACTUAR
+[Describe las consecuencias legales y económicas específicas: embargos, multas, intereses TIM, cobranza coactiva, etc.]
+
+💡 ESTRATEGIA RECOMENDADA
+[Recomendación táctica del abogado: si conviene pagar, apelar, solicitar fraccionamiento, interponer recurso de reclamación, etc.]
+
+Sé específico, usa términos legales peruanos y cita artículos cuando sea relevante. Máximo 350 palabras."""
+
+    result = await _call_gemini(prompt, max_tokens=700) or await _call_claude(prompt, max_tokens=700)
     if result:
         return result
 
     # Fallback básico sin IA
-    lines = [f"📋 Notificación de {sender}"]
-    if notification.get("is_urgent"):
-        lines.append("⚠️ Esta notificación requiere atención urgente.")
-    lines.append(f"📄 Asunto: {subject}")
-    if body:
-        lines.append(f"📝 Contenido: {body[:200]}")
-    lines.append("💡 Recomendación: Consultar con un especialista tributario para determinar las acciones a tomar.")
+    urgencia = "🚨 CRÍTICO" if is_urgent else "⚠️ REQUIERE ATENCIÓN"
+    lines = [
+        f"⚖️ NATURALEZA JURÍDICA\nNotificación oficial de {sender}. Asunto: {subject}",
+        f"\n🚨 NIVEL DE RIESGO: {urgencia}",
+        f"\n⏰ PLAZOS LEGALES\nSegún el Art. 104 del Código Tributario, la notificación en el Buzón SOL surte efectos desde el día hábil siguiente a su depósito.",
+        f"\n🎯 ACCIONES INMEDIATAS\n1. Revisar el documento completo adjunto\n2. Consultar con contador o abogado tributario\n3. Verificar plazos específicos en el documento",
+        f"\n💰 CONSECUENCIAS DE NO ACTUAR\nEl incumplimiento puede generar multas, intereses moratorios (TIM 1.2% mensual) y cobranza coactiva.",
+        f"\n💡 ESTRATEGIA RECOMENDADA\nContactar inmediatamente a un especialista tributario para evaluar las opciones legales disponibles.",
+    ]
     return "\n".join(lines)
+
+
+async def generate_ai_summary_expert(notifications: list) -> str:
+    """Genera resumen ejecutivo con análisis de riesgo tributario global."""
+    if not notifications:
+        return _basic_summary(notifications)
+
+    urgent = [n for n in notifications if n.get("is_urgent")]
+    notif_text = "\n".join(
+        f"- [{n.get('date_received','')[:10]}] {n['subject']} | Ref: {n.get('reference_number','')} | {n.get('sender','')}"
+        + (" 🚨 URGENTE" if n.get("is_urgent") else "")
+        for n in notifications
+    )
+
+    prompt = f"""Eres el mejor abogado tributarista del Perú. Analiza estas {len(notifications)} notificaciones del Buzón SUNAT SOL y genera un resumen ejecutivo para el contador responsable.
+
+NOTIFICACIONES:
+{notif_text}
+
+Genera el siguiente resumen ejecutivo:
+
+📊 DIAGNÓSTICO GENERAL
+[Estado global del contribuyente frente a SUNAT en 2-3 oraciones]
+
+🚨 ALERTAS CRÍTICAS ({len(urgent)} urgentes)
+[Lista solo las notificaciones de mayor riesgo con acción inmediata requerida]
+
+⏰ PRÓXIMOS VENCIMIENTOS
+[Plazos más cercanos a vencer según las notificaciones]
+
+🎯 PLAN DE ACCIÓN PRIORITARIO
+1. [Acción más urgente]
+2. [Segunda acción]
+3. [Tercera acción]
+
+Responde en español, máximo 200 palabras. Sé específico y práctico."""
+
+    result = await _call_gemini(prompt, max_tokens=500) or await _call_claude(prompt, max_tokens=500)
+    return result or _basic_summary(notifications)
 
 
 def _basic_summary(notifications: list) -> str:

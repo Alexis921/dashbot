@@ -21,7 +21,7 @@ load_dotenv()
 from app.database import get_db, init_db, Notification, SyncLog
 from app.scraper import scrape_sunat_notifications, get_demo_notifications
 from app.email_service import send_email_summary
-from app.ai_summary import generate_ai_summary, generate_notification_interpretation
+from app.ai_summary import generate_ai_summary, generate_ai_summary_expert, generate_notification_interpretation
 
 app = FastAPI(title="BOT SUNAT", version="1.0.0")
 
@@ -127,11 +127,21 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
         result = await scrape_sunat_notifications(
             ruc, session["usuario"], session["password"]
         )
-        # Si SUNAT no responde, usar demo automáticamente
         if not result["success"]:
-            result = await get_demo_notifications(ruc)
-            result["fallback"] = True
-            result["fallback_reason"] = "SUNAT no disponible en este momento. Mostrando datos de ejemplo."
+            # Retornar error real sin caer a demo
+            error_type = result.get("error_type", "sunat_no_disponible")
+            return {
+                "success": False,
+                "ruc": ruc,
+                "new_count": 0,
+                "total": 0,
+                "notifications": [],
+                "ai_summary": "",
+                "synced_at": datetime.utcnow().isoformat(),
+                "is_demo": False,
+                "error": result.get("error", "No se pudo conectar a SUNAT."),
+                "error_type": error_type,
+            }
 
     # Guardar notificaciones en DB
     new_count = 0
@@ -167,8 +177,8 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
 
     session["last_sync"] = datetime.utcnow()
 
-    # Generar resumen IA
-    ai_summary = await generate_ai_summary(result["notifications"])
+    # Generar resumen IA experto
+    ai_summary = await generate_ai_summary_expert(result["notifications"])
 
     return {
         "success": True,

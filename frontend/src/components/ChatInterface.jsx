@@ -125,6 +125,36 @@ export default function ChatInterface({ session, onLogout }) {
     try {
       const data = await apiSync(session.session_id)
       setTyping(false)
+
+      // Error de conexión real a SUNAT
+      if (!data.success && data.error) {
+        const isCredErr = data.error_type === 'credenciales'
+        addBot(
+          <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderLeft: '4px solid #d92d20', borderRadius: 10, padding: '14px 16px' }}>
+            <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
+              {isCredErr ? '🔐 Credenciales incorrectas' : '⚠️ No se pudo conectar a SUNAT'}
+            </div>
+            <div style={{ fontSize: 13, color: '#7f1d1d', lineHeight: 1.6, marginBottom: 12 }}>
+              {data.error}
+            </div>
+            {!isCredErr && (
+              <div style={{ fontSize: 12, color: '#9a3412', background: '#fff7ed', borderRadius: 6, padding: '8px 12px' }}>
+                💡 <strong>¿Por qué ocurre esto?</strong> El portal SOL de SUNAT usa JavaScript y protecciones anti-bot que bloquean el acceso directo.
+                Estamos trabajando en una solución con navegador automatizado (Playwright).
+                <br/><br/>
+                Puedes usar el <strong>modo demo</strong> para ver cómo funciona el sistema mientras tanto.
+              </div>
+            )}
+            {isCredErr && (
+              <div style={{ fontSize: 12, color: '#1e40af', background: '#eff6ff', borderRadius: 6, padding: '8px 12px' }}>
+                💡 Verifica tu RUC, usuario SOL y contraseña. La contraseña SOL es diferente a la clave SUNAT.
+              </div>
+            )}
+          </div>
+        )
+        return
+      }
+
       setNotifications(data.notifications || [])
 
       addBot(
