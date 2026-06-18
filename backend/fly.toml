@@ -1,5 +1,5 @@
 app = "dashbot-backend"
-primary_region = "dfw"
+primary_region = "gru"
 
 [build]
   dockerfile = "Dockerfile"
@@ -22,4 +22,4 @@ primary_region = "dfw"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "1gb"
