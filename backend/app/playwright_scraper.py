@@ -226,29 +226,47 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
         if not clicked_buzon:
             await page.goto(SUNAT_BUZON_URL, wait_until="networkidle", timeout=20000)
 
-        await page.wait_for_timeout(4000)
+        await page.wait_for_timeout(3000)
 
-        # ── PASO 7: Extraer notificaciones (buscar en todos los frames) ───────
+        # ── PASO 7: Clic en "Buzón Notificaciones" para cargar la lista ───────
+        try:
+            notif_tab = page.locator(
+                "a:has-text('Buzón Notificaciones'), "
+                "a:has-text('Notificaciones'), "
+                "span:has-text('Buzón Notificaciones'), "
+                "[href*='Notificacion'], [href*='notificacion']"
+            )
+            if await notif_tab.count() > 0:
+                await notif_tab.first.click()
+                await page.wait_for_timeout(3000)
+        except Exception:
+            pass
+
+        # Esperar que cargue la lista (AJAX)
+        try:
+            await page.wait_for_selector(
+                "table tr td, li, .asunto, [class*='notif'], [class*='item'], [class*='mensaje']",
+                timeout=10000,
+            )
+        except Exception:
+            pass
+        await page.wait_for_timeout(2000)
+
+        # ── PASO 8: Extraer notificaciones ────────────────────────────────────
         notifications = await _extract_buzon(page, ruc)
 
         if not notifications:
-            # Verificar en todos los frames si estamos en el buzón
-            all_text = ""
-            for frame in page.frames:
-                try:
-                    all_text += (await frame.inner_text("body")).lower()
-                except Exception:
-                    pass
-
-            if any(w in all_text for w in ["buzón", "buzon", "notificaci", "bandeja", "asunto"]):
-                return {"success": True, "notifications": [], "error": None,
-                        "note": "Buzón accedido. Sin notificaciones visibles."}
-
-            # Diagnóstico de frames
-            frame_info = [(f.url, ) for f in page.frames if f.url and "about:blank" not in f.url]
+            # Volcar HTML para diagnóstico final
+            html_sample = (await page.content())[:1000]
+            body_text = ""
+            try:
+                body_text = (await page.inner_text("body"))[:300]
+            except Exception:
+                pass
+            frame_info = [f.url for f in page.frames if f.url and "about:blank" not in f.url]
             return {
                 "success": False, "notifications": [],
-                "error": f"Llegamos al buzón pero no se encontraron notificaciones. URL: {page.url} | Frames: {frame_info}",
+                "error": f"URL: {page.url} | Frames: {frame_info} | Body: {body_text[:200]} | HTML: {html_sample[200:500]}",
                 "error_type": "buzon_empty_extract",
             }
 
