@@ -205,68 +205,66 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
         except Exception:
             pass
 
-        # ── PASO 6: Navegar al Buzón Electrónico ─────────────────────────────
-        # Intentar link "Buzón Electrónico" en el menú (busca en todos los frames)
-        clicked_buzon = False
-        for frame in page.frames:
+        # ── PASO 6: Abrir Buzón Electrónico (puede abrir nueva pestaña) ─────────
+        context = page.context
+        buzon_page = None
+
+        # Escuchar nueva pestaña antes de hacer click
+        async with context.expect_page() as new_page_info:
             try:
-                buzon_link = frame.locator(
+                buzon_link = page.locator(
                     "a:has-text('Buzón Electrónico'), "
                     "a:has-text('Buzon Electronico'), "
-                    "a[href*='buzon' i], a[href*='Buzon' i]"
+                    "a[href*='buzon' i]"
                 )
                 if await buzon_link.count() > 0:
                     await buzon_link.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=20000)
-                    clicked_buzon = True
-                    break
+                    buzon_page = await new_page_info.value
+                    await buzon_page.wait_for_load_state("networkidle", timeout=25000)
             except Exception:
-                continue
+                buzon_page = None
 
-        if not clicked_buzon:
-            await page.goto(SUNAT_BUZON_URL, wait_until="networkidle", timeout=20000)
+        # Si no abrió nueva pestaña, quedarse en la página actual
+        if buzon_page is None:
+            buzon_page = page
 
-        await page.wait_for_timeout(3000)
+        await buzon_page.wait_for_timeout(3000)
 
-        # ── PASO 7: Clic en "Buzón Notificaciones" para cargar la lista ───────
+        # ── PASO 7: Clic en "Buzón Notificaciones" en panel izquierdo ─────────
         try:
-            notif_tab = page.locator(
+            notif_btn = buzon_page.locator(
                 "a:has-text('Buzón Notificaciones'), "
-                "a:has-text('Notificaciones'), "
                 "span:has-text('Buzón Notificaciones'), "
-                "[href*='Notificacion'], [href*='notificacion']"
+                "a:has-text('Notificaciones')"
             )
-            if await notif_tab.count() > 0:
-                await notif_tab.first.click()
-                await page.wait_for_timeout(3000)
+            if await notif_btn.count() > 0:
+                await notif_btn.first.click()
+                await buzon_page.wait_for_timeout(4000)
         except Exception:
             pass
 
-        # Esperar que cargue la lista (AJAX)
+        # Esperar que cargue lista AJAX
         try:
-            await page.wait_for_selector(
-                "table tr td, li, .asunto, [class*='notif'], [class*='item'], [class*='mensaje']",
+            await buzon_page.wait_for_selector(
+                "[class*='asunto'], li, table tr td, div:has-text('ASUNTO:')",
                 timeout=10000,
             )
         except Exception:
             pass
-        await page.wait_for_timeout(2000)
+        await buzon_page.wait_for_timeout(2000)
 
         # ── PASO 8: Extraer notificaciones ────────────────────────────────────
-        notifications = await _extract_buzon(page, ruc)
+        notifications = await _extract_buzon(buzon_page, ruc)
 
         if not notifications:
-            # Volcar HTML para diagnóstico final
-            html_sample = (await page.content())[:1000]
             body_text = ""
             try:
-                body_text = (await page.inner_text("body"))[:300]
+                body_text = (await buzon_page.inner_text("body"))[:400]
             except Exception:
                 pass
-            frame_info = [f.url for f in page.frames if f.url and "about:blank" not in f.url]
             return {
                 "success": False, "notifications": [],
-                "error": f"URL: {page.url} | Frames: {frame_info} | Body: {body_text[:200]} | HTML: {html_sample[200:500]}",
+                "error": f"Buzón abierto pero sin notificaciones extraídas. URL: {buzon_page.url} | Body: {body_text}",
                 "error_type": "buzon_empty_extract",
             }
 
@@ -317,39 +315,52 @@ async def _extract_frame_items(frame) -> list:
         return await frame.evaluate("""() => {
             const results = [];
 
-            // Tabla clásica
-            document.querySelectorAll('table tr').forEach((row, idx) => {
-                if (idx === 0) return;
-                const cells = [...row.querySelectorAll('td')].map(c => c.innerText.trim());
-                if (cells.length >= 2 && cells[0].length > 10) {
-                    const link = row.querySelector('a[href]');
-                    const pdfLink = row.querySelector('a[href*=".pdf"], a[href*="adjunto"], a[href*="constancia"]');
-                    results.push({
-                        subject: cells[0],
-                        date: cells[1] || '',
-                        extra: cells.slice(2).join(' | '),
-                        pdfHref: pdfLink ? pdfLink.href : (link ? link.href : ''),
-                        hasAttach: !!(row.querySelector('img[src*="clip"]') || pdfLink)
-                    });
-                }
-            });
+            // Buscar divs/elementos que contengan "ASUNTO:" (estructura real del buzón SUNAT)
+            const allEls = [...document.querySelectorAll('div, li, td, span')];
+            for (const el of allEls) {
+                const txt = el.innerText || '';
+                if (!txt.includes('ASUNTO:')) continue;
+                // Evitar duplicados (si el padre ya fue encontrado)
+                if (results.some(r => r.subject && txt.startsWith(r.subject))) continue;
 
-            // Lista de notificaciones nueva (div/li)
+                const lines = txt.split('\\n').map(l => l.trim()).filter(Boolean);
+                const subject = lines[0].replace(/^ASUNTO:\\s*/, '').trim();
+                if (!subject || subject.length < 10) continue;
+
+                // Buscar fecha en las líneas
+                const dateLine = lines.find(l => /\\d{2}\/\\d{2}\/\\d{4}/.test(l)) || '';
+                // Buscar link PDF en el contenedor o elemento padre
+                const container = el.closest('li, tr, div[class], div[id]') || el;
+                const pdfLink = container.querySelector('a[href*="constancia"], a[href*=".pdf"], a[href*="adjunto"]');
+                const hasClip = !!container.querySelector('img[src*="clip"], [class*="clip"], [class*="attach"]');
+                const badge = container.querySelector('[class*="badge"], span[class*="label"], .etiqueta');
+
+                results.push({
+                    subject,
+                    date: dateLine,
+                    extra: lines.join(' | '),
+                    pdfHref: pdfLink ? pdfLink.href : '',
+                    hasAttach: !!pdfLink || hasClip,
+                    category: badge ? badge.innerText.trim() : ''
+                });
+
+                if (results.length >= 100) break;
+            }
+
+            // Fallback: tabla clásica
             if (results.length === 0) {
-                document.querySelectorAll(
-                    '.asunto, [class*="asunto"], [class*="subject"], ' +
-                    'li[class*="item"], li[class*="mensaje"], .list-group-item'
-                ).forEach(el => {
-                    const text = el.innerText.trim();
-                    if (text.length > 10) {
-                        const pdfLink = el.querySelector('a[href*=".pdf"], a[href*="adjunto"], a[href*="constancia"]');
-                        const anyLink = el.querySelector('a[href]') || el.closest('li, tr')?.querySelector('a[href]');
+                document.querySelectorAll('table tr').forEach((row, idx) => {
+                    if (idx === 0) return;
+                    const cells = [...row.querySelectorAll('td')].map(c => c.innerText.trim());
+                    if (cells.length >= 2 && cells[0].length > 10) {
+                        const pdfLink = row.querySelector('a[href*="constancia"], a[href*=".pdf"]');
                         results.push({
-                            subject: text.split('\\n')[0].trim(),
-                            date: '',
-                            extra: text,
-                            pdfHref: pdfLink ? pdfLink.href : (anyLink ? anyLink.href : ''),
-                            hasAttach: !!pdfLink
+                            subject: cells[0].replace(/^ASUNTO:\\s*/, ''),
+                            date: cells[1] || '',
+                            extra: cells.join(' | '),
+                            pdfHref: pdfLink ? pdfLink.href : '',
+                            hasAttach: !!pdfLink,
+                            category: cells[2] || ''
                         });
                     }
                 });
