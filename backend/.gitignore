@@ -1,0 +1,5 @@
+.vercel
+debug_out/
+*.db
+__pycache__/
+.env

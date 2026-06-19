@@ -20,7 +20,7 @@ load_dotenv()
 
 from app.database import get_db, init_db, Notification, SyncLog
 from app.scraper import scrape_sunat_notifications, get_demo_notifications
-from app.playwright_scraper import scrape_with_playwright
+from app.playwright_scraper import scrape_with_playwright, download_pdf_from_sunat
 from app.email_service import send_email_summary
 from app.ai_summary import generate_ai_summary, generate_ai_summary_expert, generate_notification_interpretation
 
@@ -327,36 +327,28 @@ async def download_pdf(notif_id: str, session_id: str, db: Session = Depends(get
             "Ingresa con tus credenciales SOL para descargar adjuntos."
         )
 
-    # Intentar descargar el PDF de SUNAT usando la sesión activa
-    # El ID de SUNAT generalmente está en el formato S-RUC-N
-    try:
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
-            # Construir URL de descarga de SUNAT
-            pdf_url = (
-                f"https://www.sunat.gob.pe/ol-ti-itbuzonelectronico/bin/"
-                f"descargarAdjunto.do?idNotificacion={notif_id}"
-            )
-            resp = await client.get(
-                pdf_url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
-                    "Referer": "https://www.sunat.gob.pe/sol.html",
-                },
-            )
-            if resp.status_code == 200 and b"PDF" in resp.content[:8]:
-                filename = notif.attachment_name or f"sunat_{notif_id}.pdf"
-                return StreamingResponse(
-                    iter([resp.content]),
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-                )
-    except Exception:
-        pass
+    # Extraer el ID de mensaje SUNAT del notif_id (formato: S-{ruc}-{msg_id})
+    parts = notif_id.split("-")
+    sunat_msg_id = parts[-1] if len(parts) >= 3 else ""
+    if not sunat_msg_id.isdigit():
+        raise HTTPException(404, "No se pudo identificar el adjunto en SUNAT.")
 
-    raise HTTPException(
-        503,
-        "No se pudo descargar el PDF de SUNAT en este momento. "
-        "Intenta descargarlo directamente desde el portal SOL."
+    # Re-loguear en SUNAT con las credenciales en memoria y descargar el PDF
+    result = await download_pdf_from_sunat(
+        session["ruc"], session["usuario"], session["password"], sunat_msg_id
+    )
+
+    if not result.get("success"):
+        raise HTTPException(
+            503,
+            result.get("error", "No se pudo descargar el PDF de SUNAT en este momento.")
+        )
+
+    filename = result.get("filename") or notif.attachment_name or f"sunat_{sunat_msg_id}.pdf"
+    return StreamingResponse(
+        iter([result["data"]]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -1,11 +1,11 @@
 """
-Scraper de buzón SUNAT usando Playwright (Chromium headless).
-Flujo real:
-  1. sol.html → click "Ingresar" → OAuth en api-seguridad.sunat.gob.pe
-  2. Llenar RUC + usuario SOL + contraseña → submit
-  3. Manejar popup "Valida tus datos de contacto" (Finalizar → Continuar sin confirmar)
-  4. Navegar al Buzón Electrónico
-  5. Extraer notificaciones y links de PDF
+Scraper del buzón SUNAT con Playwright (Chromium headless).
+Flujo REAL validado (debug_sunat.py desde IP peruana):
+  1. sol.html → click "Operaciones en Línea" (genera token state) → login OAuth
+  2. Llenar #txtRuc, #txtUsuario, #txtContrasena → #btnAceptar
+  3. Popup "Valida tus datos": Finalizar → Continuar sin confirmar
+  4. Click "Buzón Electrónico" → carga lista
+  5. Extraer <ul id="listaMensajes"> <li> ... con asunto/fecha/categoría/adjunto
 """
 import asyncio
 import re
@@ -13,25 +13,45 @@ from datetime import datetime
 
 URGENT_KEYWORDS = [
     "multa", "infracción", "cobranza coactiva", "embargo", "sanción",
-    "baja", "cierre", "fiscalización", "requerimiento", "deuda",
-    "ejecución coactiva", "resolución de determinación", "resolución de multa",
-    "orden de pago", "vencimiento", "urgente", "citación",
+    "fiscalización", "requerimiento", "ejecución coactiva",
+    "resolución de determinación", "resolución de multa", "orden de pago",
+    "vencimiento", "urgente", "citación", "esquela",
 ]
 
-SUNAT_SOL_URL   = "https://www.sunat.gob.pe/sol.html"
-SUNAT_MENU_URL  = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*"
-SUNAT_BUZON_URL = "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico/bin/ejecBuzon.do"
-OAUTH_DOMAIN    = "api-seguridad.sunat.gob.pe"
-# URL OAuth directa — client_id fijo de SUNAT SOL
-SUNAT_OAUTH_URL = (
-    "https://api-seguridad.sunat.gob.pe/v1/clientessol/"
-    "4f3b88b3-d9d6-402a-b85d-6a0bc857746a/oauth2/loginMenuSol"
-    "?lang=es-PE&showDni=true&showLanguages=false"
-    "&originalUrl=https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm"
-)
+SOL_URL = "https://www.sunat.gob.pe/sol.html"
+EMENU_HOST = "https://e-menu.sunat.gob.pe"
+
+# JS de extracción validado contra el HTML real del buzón
+EXTRACT_JS = r"""() => {
+    const out = [];
+    const lis = document.querySelectorAll('ul#listaMensajes > li.list-group-item, ul#listaMensajes > li');
+    lis.forEach(li => {
+        const link = li.querySelector('a.linkMensaje');
+        if (!link) return;
+        const subject = (link.innerText || '').trim();
+        if (!subject) return;
+        const dateEl = li.querySelector('.fecPublica');
+        const tagEl = li.querySelector('.label.tag, .label');
+        const leido = li.querySelector('input[id="idLeido"]');
+        const urgente = li.querySelector('input[id="idUrgente"]');
+        const hasClip = !!li.querySelector('.fa-paperclip, [class*="paperclip"]');
+        out.push({
+            id: li.id || '',
+            subject: subject,
+            date: dateEl ? dateEl.innerText.trim() : '',
+            category: tagEl ? tagEl.innerText.trim() : '',
+            leido: leido ? leido.value : '0',
+            urgente: urgente ? urgente.value : '0',
+            hasAttach: hasClip
+        });
+    });
+    return out;
+}"""
 
 
-def _is_urgent(subject: str) -> bool:
+def _is_urgent(subject: str, urgente_flag: str) -> bool:
+    if urgente_flag == "1":
+        return True
     s = subject.lower()
     return any(kw in s for kw in URGENT_KEYWORDS)
 
@@ -43,22 +63,16 @@ async def scrape_with_playwright(ruc: str, usuario: str, password: str) -> dict:
         return {"success": False, "notifications": [], "error": "Playwright no instalado.", "error_type": "playwright_not_installed"}
 
     try:
-        result = await asyncio.wait_for(
-            _run_playwright(ruc, usuario, password),
-            timeout=90.0,  # 90s: OAuth + popup + buzón
-        )
-        return result
+        return await asyncio.wait_for(_run(ruc, usuario, password), timeout=110.0)
     except asyncio.TimeoutError:
-        return {
-            "success": False, "notifications": [],
-            "error": "Tiempo de espera agotado (90 seg). SUNAT tardó demasiado en responder.",
-            "error_type": "timeout",
-        }
+        return {"success": False, "notifications": [],
+                "error": "SUNAT tardó más de 110 segundos en responder.", "error_type": "timeout"}
     except Exception as e:
-        return {"success": False, "notifications": [], "error": f"Error de navegador: {str(e)[:200]}", "error_type": "browser_error"}
+        return {"success": False, "notifications": [],
+                "error": f"Error de navegador: {str(e)[:200]}", "error_type": "browser_error"}
 
 
-async def _run_playwright(ruc: str, usuario: str, password: str) -> dict:
+async def _run(ruc: str, usuario: str, password: str) -> dict:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
@@ -67,341 +81,282 @@ async def _run_playwright(ruc: str, usuario: str, password: str) -> dict:
             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
                   "--disable-gpu", "--disable-extensions"],
         )
-        context = await browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
+        ctx = await browser.new_context(
+            viewport={"width": 1366, "height": 900},
+            user_agent=("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
             locale="es-PE",
         )
-        page = await context.new_page()
+        page = await ctx.new_page()
         try:
-            result = await _do_login_and_scrape(page, ruc, usuario, password)
+            return await _login_and_scrape(ctx, page, ruc, usuario, password)
         finally:
             await browser.close()
-        return result
 
 
-async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> dict:
+async def _click_maybe_newtab(ctx, page, selector: str, timeout: int = 8000):
+    """Hace click; si abre nueva pestaña la devuelve, si no devuelve la misma página."""
+    from playwright.async_api import TimeoutError as PWTimeout
+    try:
+        async with ctx.expect_page(timeout=timeout) as new_info:
+            await page.locator(selector).first.click()
+        new_page = await new_info.value
+        try:
+            await new_page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            pass
+        return new_page
+    except PWTimeout:
+        # No abrió nueva pestaña — el click igual pudo navegar la misma página
+        try:
+            await page.wait_for_load_state("networkidle", timeout=20000)
+        except Exception:
+            pass
+        return page
+    except Exception:
+        return page
+
+
+async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # ── PASO 1: Ir directamente al formulario OAuth de SUNAT ─────────────
-        # El client_id 4f3b88b3... es fijo de SUNAT SOL (no cambia)
-        await page.goto(SUNAT_OAUTH_URL, wait_until="networkidle", timeout=30000)
+        # ── 1. sol.html (genera token state) ──────────────────────────────
+        await page.goto(SOL_URL, wait_until="networkidle", timeout=30000)
+        await page.wait_for_timeout(1500)
+
+        # ── 2. Ir al login (puede abrir nueva pestaña) ────────────────────
+        page = await _click_maybe_newtab(
+            ctx, page,
+            "a:has-text('Operaciones en Línea'), a:has-text('Operaciones en Linea'), a:has-text('Ingresar')",
+        )
         await page.wait_for_timeout(2000)
 
-        # ── PASO 2: Llenar formulario OAuth ──────────────────────────────────
-        if OAUTH_DOMAIN in page.url:
-            # Detectar campos reales del formulario OAuth
-            inputs = await page.evaluate("""() =>
-                [...document.querySelectorAll('input')].map(el => ({
-                    name: el.name, id: el.id, type: el.type,
-                    placeholder: el.placeholder, visible: el.offsetParent !== null
-                }))
-            """)
-            visible = [i for i in inputs if i.get("type") != "hidden" and i.get("visible")]
-
-            # Buscar campo RUC
-            ruc_field = next((i for i in visible if any(
-                k in (i.get("name","") + i.get("id","") + i.get("placeholder","")).lower()
-                for k in ["ruc", "txtRuc", "contribuyente"]
-            )), None)
-
-            # Buscar campo usuario
-            usr_field = next((i for i in visible if any(
-                k in (i.get("name","") + i.get("id","") + i.get("placeholder","")).lower()
-                for k in ["usuario", "user", "login"]
-            ) and i != ruc_field), None)
-
-            # Buscar campo contraseña
-            pwd_field = next((i for i in visible if
-                i.get("type") == "password" or
-                any(k in (i.get("name","") + i.get("id","")).lower() for k in ["contra", "pass", "pwd"])
-            ), None)
-
-            if ruc_field and pwd_field:
-                # Portal con campos separados: RUC | usuario | contraseña
-                await page.locator(f"#{ruc_field['id']}" if ruc_field.get("id") else f"input[name='{ruc_field['name']}']").first.fill(ruc)
-                if usr_field:
-                    await page.locator(f"#{usr_field['id']}" if usr_field.get("id") else f"input[name='{usr_field['name']}']").first.fill(usuario)
-                pwd_sel = f"#{pwd_field['id']}" if pwd_field.get("id") else f"input[name='{pwd_field['name']}']"
-                await page.locator(pwd_sel).first.fill(password)
-            elif pwd_field:
-                # Portal con campo único usuario: RUC+usuario concatenado
-                usr_single = next((i for i in visible if i != pwd_field), None)
-                if usr_single:
-                    sel = f"#{usr_single['id']}" if usr_single.get("id") else f"input[name='{usr_single['name']}']"
-                    await page.locator(sel).first.fill(ruc + usuario)
-                pwd_sel = f"#{pwd_field['id']}" if pwd_field.get("id") else "input[type='password']"
-                await page.locator(pwd_sel).first.fill(password)
-            else:
-                # Fallback: llenar por orden (1er visible=RUC, 2do=usuario, 3ro=contraseña)
-                if len(visible) >= 1:
-                    await page.locator(f"input[name='{visible[0]['name']}']").first.fill(ruc)
-                if len(visible) >= 2:
-                    await page.locator(f"input[name='{visible[1]['name']}']").first.fill(usuario)
-                if len(visible) >= 3:
-                    await page.locator(f"input[name='{visible[2]['name']}']").first.fill(password)
-
-            # Submit del formulario OAuth
-            submit = page.locator("button[type='submit'], input[type='submit'], button:has-text('Iniciar'), button:has-text('Ingresar')")
-            if await submit.count() > 0:
-                await submit.first.click()
-            else:
-                await page.keyboard.press("Enter")
-
-            await page.wait_for_load_state("networkidle", timeout=20000)
-            await page.wait_for_timeout(2000)
-        else:
-            # No llegamos al OAuth — diagnóstico
-            inputs_info = await page.evaluate("""() =>
-                [...document.querySelectorAll('input')].map(e => ({name:e.name,id:e.id,type:e.type}))
-            """)
-            all_links = await page.evaluate("""() =>
-                [...document.querySelectorAll('a[href]')].slice(0,10).map(a => a.href)
-            """)
-            return {
-                "success": False, "notifications": [],
-                "error": f"URL: {page.url} | Inputs: {inputs_info[:6]} | Links: {all_links[:6]}",
-                "error_type": "oauth_not_reached",
-            }
-
-        # ── PASO 4: Verificar credenciales incorrectas ────────────────────────
-        all_text = await page.inner_text("body")
-        if any(e in all_text.lower() for e in [
-            "contraseña incorrecta", "datos incorrectos", "ruc o usuario",
-            "acceso denegado", "incorrect", "inválido", "no válido",
-        ]):
-            return {
-                "success": False, "notifications": [],
-                "error": "Credenciales incorrectas. Verifica tu RUC, usuario SOL y contraseña SOL.",
-                "error_type": "credenciales",
-            }
-
-        # ── PASO 5: Manejar popup "Valida tus datos de contacto" ─────────────
-        # Primer modal "Informativo" → botón "Finalizar"
-        await page.wait_for_timeout(2000)
+        # ── 3. Llenar formulario de login ─────────────────────────────────
         try:
-            finalizar = page.locator("button:has-text('Finalizar'), input[value*='Finalizar']")
-            if await finalizar.count() > 0:
-                await finalizar.first.click()
-                await page.wait_for_timeout(1500)
-        except Exception:
-            pass
+            await page.wait_for_selector("#txtRuc", timeout=15000)
+        except PWTimeout:
+            return {"success": False, "notifications": [],
+                    "error": f"No se encontró el formulario de login. URL: {page.url}",
+                    "error_type": "form_not_found"}
 
-        # Segundo modal o página → botón "Continuar sin confirmar"
-        try:
-            continuar = page.locator(
-                "button:has-text('Continuar sin confirmar'), "
-                "input[value*='Continuar'], a:has-text('Continuar')"
-            )
-            if await continuar.count() > 0:
-                await continuar.first.click()
-                await page.wait_for_load_state("networkidle", timeout=15000)
-                await page.wait_for_timeout(1500)
-        except Exception:
-            pass
-
-        # ── PASO 6: Asegurarse de estar en MenuInternet y hacer click en Buzón ──
-        # Después del login SUNAT redirige al menú. Nos aseguramos de estar ahí.
-        if "MenuInternet" not in page.url and "menu" not in page.url.lower():
-            await page.goto(SUNAT_MENU_URL, wait_until="networkidle", timeout=20000)
-            await page.wait_for_timeout(2000)
-
-        # Buscar y hacer click en "Buzón Electrónico" en todos los frames
-        for frame in [page] + list(page.frames):
-            try:
-                link = frame.locator(
-                    "a:has-text('Buzón Electrónico'), "
-                    "a:has-text('Buzon Electronico')"
-                )
-                if await link.count() > 0:
-                    await link.first.click()
-                    await page.wait_for_load_state("networkidle", timeout=20000)
-                    break
-            except Exception:
-                continue
-
+        await page.fill("#txtRuc", ruc)
+        await page.fill("#txtUsuario", usuario)
+        await page.fill("#txtContrasena", password)
+        await page.click("#btnAceptar")
         await page.wait_for_timeout(4000)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=25000)
+        except Exception:
+            pass
 
-        # ── PASO 7: Buscar frame con contenido del buzón ──────────────────────
-        # El buzón carga en un frame interno del menú
-        buzon_frame = page  # fallback
-        for frame in page.frames:
+        # ── 4. Verificar credenciales ─────────────────────────────────────
+        body = (await page.inner_text("body")).lower()
+        if any(e in body for e in ["contraseña incorrecta", "usuario o contraseña",
+                                    "datos incorrectos", "no es válido", "no válido"]):
+            return {"success": False, "notifications": [],
+                    "error": "Credenciales incorrectas. Verifica RUC, usuario SOL y contraseña SOL.",
+                    "error_type": "credenciales"}
+        if "error en la invocaci" in body:
+            return {"success": False, "notifications": [],
+                    "error": "SUNAT rechazó la sesión (token inválido). Reintenta en unos segundos.",
+                    "error_type": "session_error"}
+
+        # ── 5. Popup "Valida tus datos de contacto" ───────────────────────
+        for label in ["Finalizar", "Continuar sin confirmar"]:
             try:
-                txt = (await frame.inner_text("body")).lower()
-                if "asunto" in txt and ("notificac" in txt or "buzon" in txt or "buzón" in txt):
-                    buzon_frame = frame
+                btn = page.locator(f"button:has-text('{label}'), input[value*='{label}']")
+                if await btn.count() > 0:
+                    await btn.first.click()
+                    await page.wait_for_timeout(2500)
+            except Exception:
+                pass
+
+        # ── 6. Click "Buzón Electrónico" ──────────────────────────────────
+        buzon = page
+        try:
+            buzon = await _click_maybe_newtab(
+                ctx, page,
+                "a:has-text('Buzón Electrónico'), a:has-text('Buzon Electronico')",
+                timeout=8000,
+            )
+        except Exception:
+            pass
+        await buzon.wait_for_timeout(4000)
+
+        # Asegurar que la pestaña "Buzón Notificaciones" esté activa
+        for fr in buzon.frames:
+            try:
+                tab = fr.locator("a:has-text('Buzón Notificaciones'), a:has-text('Notificaciones')")
+                if await tab.count() > 0:
+                    await tab.first.click()
+                    await buzon.wait_for_timeout(3000)
                     break
             except Exception:
                 continue
 
-        # Clic en "Buzón Notificaciones" dentro del frame
-        try:
-            btn = buzon_frame.locator(
-                "a:has-text('Buzón Notificaciones'), "
-                "a:has-text('Notificaciones')"
-            )
-            if await btn.count() > 0:
-                await btn.first.click()
-                await page.wait_for_timeout(4000)
-        except Exception:
-            pass
+        # ── 7. Extraer notificaciones del frame con listaMensajes ─────────
+        notifs_raw = []
+        for fr in buzon.frames:
+            try:
+                if await fr.locator("ul#listaMensajes").count() > 0:
+                    await fr.wait_for_selector("ul#listaMensajes > li", timeout=8000)
+                    notifs_raw = await fr.evaluate(EXTRACT_JS)
+                    if notifs_raw:
+                        break
+            except Exception:
+                continue
 
-        # ── PASO 8: Extraer notificaciones de todos los frames ────────────────
-        notifications = await _extract_buzon(page, ruc)
+        # Fallback: intentar en la página principal
+        if not notifs_raw:
+            try:
+                notifs_raw = await buzon.evaluate(EXTRACT_JS)
+            except Exception:
+                pass
 
-        if not notifications:
-            # Diagnóstico: mostrar texto de cada frame
-            frames_text = {}
-            for i, frame in enumerate(page.frames):
+        if not notifs_raw:
+            # ¿Buzón vacío o no cargó?
+            txt = ""
+            for fr in buzon.frames:
                 try:
-                    t = (await frame.inner_text("body"))[:200]
-                    frames_text[f"frame{i}({frame.url[:60]})"] = t
+                    txt += (await fr.inner_text("body")).lower()
                 except Exception:
                     pass
-            return {
-                "success": False, "notifications": [],
-                "error": f"Sin notificaciones. Frames: {frames_text}",
-                "error_type": "buzon_empty_extract",
-            }
+            if "listamensajes" in txt or "no tiene" in txt or "bandeja" in txt:
+                return {"success": True, "notifications": [], "error": None,
+                        "note": "Buzón sin notificaciones."}
+            return {"success": False, "notifications": [],
+                    "error": f"Buzón abierto pero sin lista de mensajes. URL: {buzon.url}",
+                    "error_type": "buzon_empty"}
 
+        notifications = _build(notifs_raw, ruc)
         return {"success": True, "notifications": notifications, "error": None}
 
     except PWTimeout as e:
         return {"success": False, "notifications": [],
-                "error": f"SUNAT no respondió a tiempo: {str(e)[:100]}",
-                "error_type": "timeout"}
+                "error": f"SUNAT no respondió a tiempo: {str(e)[:120]}", "error_type": "timeout"}
     except Exception as e:
         err = str(e)
         if "ERR_NAME_NOT_RESOLVED" in err:
             return {"success": False, "notifications": [],
-                    "error": "No se puede resolver el dominio de SUNAT (problema de DNS).",
-                    "error_type": "dns_error"}
+                    "error": "No se resuelve el dominio de SUNAT (DNS).", "error_type": "dns_error"}
         return {"success": False, "notifications": [],
-                "error": f"Error: {err[:300]}", "error_type": "navigation_error"}
+                "error": f"Error: {err[:280]}", "error_type": "navigation_error"}
 
 
-async def _extract_buzon(page, ruc: str) -> list:
-    """Extrae notificaciones del buzón SUNAT buscando en todos los frames."""
-
-    # Esperar contenido en la página principal o cualquier frame
-    for frame in page.frames:
+def _parse_date(s: str) -> datetime:
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?", s or "")
+    if m:
         try:
-            await frame.wait_for_selector(
-                "table tr td, li, .asunto, [class*='item'], [class*='mensaje']",
-                timeout=8000,
-            )
-            break
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            hh = int(m.group(4) or 0); mm = int(m.group(5) or 0); ss = int(m.group(6) or 0)
+            return datetime(y, mo, d, hh, mm, ss)
         except Exception:
+            pass
+    return datetime.utcnow()
+
+
+def _build(items: list, ruc: str) -> list:
+    out = []
+    for it in items or []:
+        subject = (it.get("subject") or "").replace("ASUNTO:", "").strip()
+        if not subject:
             continue
-
-    # Intentar extracción en cada frame
-    all_items = []
-    for frame in page.frames:
-        items = await _extract_frame_items(frame)
-        all_items.extend(items)
-        if len(all_items) >= 5:
-            break
-
-    return _build_notifications(all_items, ruc)
-
-
-async def _extract_frame_items(frame) -> list:
-    """Extrae items de notificaciones de un frame específico."""
-    try:
-        return await frame.evaluate("""() => {
-            const results = [];
-
-            // Buscar divs/elementos que contengan "ASUNTO:" (estructura real del buzón SUNAT)
-            const allEls = [...document.querySelectorAll('div, li, td, span')];
-            for (const el of allEls) {
-                const txt = el.innerText || '';
-                if (!txt.includes('ASUNTO:')) continue;
-                // Evitar duplicados (si el padre ya fue encontrado)
-                if (results.some(r => r.subject && txt.startsWith(r.subject))) continue;
-
-                const lines = txt.split('\\n').map(l => l.trim()).filter(Boolean);
-                const subject = lines[0].replace(/^ASUNTO:\\s*/, '').trim();
-                if (!subject || subject.length < 10) continue;
-
-                // Buscar fecha en las líneas
-                const dateLine = lines.find(l => /\\d{2}\/\\d{2}\/\\d{4}/.test(l)) || '';
-                // Buscar link PDF en el contenedor o elemento padre
-                const container = el.closest('li, tr, div[class], div[id]') || el;
-                const pdfLink = container.querySelector('a[href*="constancia"], a[href*=".pdf"], a[href*="adjunto"]');
-                const hasClip = !!container.querySelector('img[src*="clip"], [class*="clip"], [class*="attach"]');
-                const badge = container.querySelector('[class*="badge"], span[class*="label"], .etiqueta');
-
-                results.push({
-                    subject,
-                    date: dateLine,
-                    extra: lines.join(' | '),
-                    pdfHref: pdfLink ? pdfLink.href : '',
-                    hasAttach: !!pdfLink || hasClip,
-                    category: badge ? badge.innerText.trim() : ''
-                });
-
-                if (results.length >= 100) break;
-            }
-
-            // Fallback: tabla clásica
-            if (results.length === 0) {
-                document.querySelectorAll('table tr').forEach((row, idx) => {
-                    if (idx === 0) return;
-                    const cells = [...row.querySelectorAll('td')].map(c => c.innerText.trim());
-                    if (cells.length >= 2 && cells[0].length > 10) {
-                        const pdfLink = row.querySelector('a[href*="constancia"], a[href*=".pdf"]');
-                        results.push({
-                            subject: cells[0].replace(/^ASUNTO:\\s*/, ''),
-                            date: cells[1] || '',
-                            extra: cells.join(' | '),
-                            pdfHref: pdfLink ? pdfLink.href : '',
-                            hasAttach: !!pdfLink,
-                            category: cells[2] || ''
-                        });
-                    }
-                });
-            }
-
-            return results.slice(0, 100);
-        }""")
-    except Exception:
-        return []
-
-
-def _build_notifications(items: list, ruc: str) -> list:
-    notifications = []
-    for i, item in enumerate(items or [], 1):
-        subject = (item.get("subject") or "").strip()
-        if not subject or len(subject) < 5:
-            continue
-        date_val = datetime.utcnow()
-        date_str = item.get("date", "")
-        if date_str:
-            m = re.search(r"\d{2}/\d{2}/\d{4}", date_str)
-            if m:
-                try:
-                    date_val = datetime.strptime(m.group(), "%d/%m/%Y")
-                except Exception:
-                    pass
-        pdf_href = item.get("pdfHref", "")
-        ref_match = re.search(r"N[°º]\s*([\d\-]+)", subject)
-        notifications.append({
-            "id": f"S-{ruc}-{i}-{abs(hash(subject)) & 0xFFFFFF}",
+        msg_id = it.get("id", "")
+        ref = re.search(r"N[°º]\s*([\d\-]+)", subject)
+        out.append({
+            "id": f"S-{ruc}-{msg_id}" if msg_id else f"S-{ruc}-{abs(hash(subject)) & 0xFFFFFF}",
+            "sunat_msg_id": msg_id,
             "subject": subject[:300],
-            "reference_number": ref_match.group(1) if ref_match else "",
-            "date_received": date_val.isoformat(),
+            "reference_number": ref.group(1) if ref else "",
+            "date_received": _parse_date(it.get("date", "")).isoformat(),
             "sender": "SUNAT",
-            "status": "nuevo",
-            "body_text": item.get("extra", "")[:500],
-            "has_attachment": bool(pdf_href) or item.get("hasAttach", False),
-            "attachment_name": pdf_href.split("/")[-1][:200] if pdf_href else "",
-            "attachment_url": pdf_href,
-            "is_urgent": _is_urgent(subject),
+            "status": "leido" if it.get("leido") == "1" else "nuevo",
+            "body_text": f"Categoría: {it.get('category', '')}",
+            "category": it.get("category", ""),
+            "has_attachment": bool(it.get("hasAttach")),
+            "attachment_name": "constancia.pdf" if it.get("hasAttach") else "",
+            "is_urgent": _is_urgent(subject, it.get("urgente", "0")),
             "ruc": ruc,
         })
-    return notifications
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Descarga de PDF on-demand: re-login + abrir mensaje + bajar constancia
+# ─────────────────────────────────────────────────────────────────────────
+async def download_pdf_from_sunat(ruc: str, usuario: str, password: str, sunat_msg_id: str) -> dict:
+    """Re-loguea, abre el mensaje por ID y descarga el PDF de la constancia."""
+    try:
+        from playwright.async_api import async_playwright  # noqa
+    except ImportError:
+        return {"success": False, "error": "Playwright no instalado."}
+    try:
+        return await asyncio.wait_for(
+            _download_pdf(ruc, usuario, password, sunat_msg_id), timeout=110.0)
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "Timeout al descargar PDF de SUNAT."}
+    except Exception as e:
+        return {"success": False, "error": f"Error: {str(e)[:200]}"}
+
+
+async def _download_pdf(ruc, usuario, password, sunat_msg_id) -> dict:
+    from playwright.async_api import async_playwright
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+        )
+        ctx = await browser.new_context(locale="es-PE", viewport={"width": 1366, "height": 900})
+        page = await ctx.new_page()
+        try:
+            # Login (mismo flujo)
+            await page.goto(SOL_URL, wait_until="networkidle", timeout=30000)
+            await page.wait_for_timeout(1500)
+            page = await _click_maybe_newtab(
+                ctx, page,
+                "a:has-text('Operaciones en Línea'), a:has-text('Ingresar')")
+            await page.wait_for_selector("#txtRuc", timeout=15000)
+            await page.fill("#txtRuc", ruc)
+            await page.fill("#txtUsuario", usuario)
+            await page.fill("#txtContrasena", password)
+            await page.click("#btnAceptar")
+            await page.wait_for_timeout(4000)
+            for label in ["Finalizar", "Continuar sin confirmar"]:
+                try:
+                    btn = page.locator(f"button:has-text('{label}'), input[value*='{label}']")
+                    if await btn.count() > 0:
+                        await btn.first.click()
+                        await page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+            buzon = await _click_maybe_newtab(
+                ctx, page, "a:has-text('Buzón Electrónico')")
+            await buzon.wait_for_timeout(3000)
+
+            # Abrir el mensaje específico y leer el link bajarArchivo
+            for fr in buzon.frames:
+                try:
+                    li = fr.locator(f"li#{sunat_msg_id} a.linkMensaje")
+                    if await li.count() > 0:
+                        await li.first.click()
+                        await buzon.wait_for_timeout(2500)
+                        adj = fr.locator("#listArchivosAdjuntos a[href*='bajarArchivo'], a[href*='bajarArchivo']")
+                        if await adj.count() > 0:
+                            href = await adj.first.get_attribute("href")
+                            name = (await adj.first.inner_text()).strip()
+                            url = href if href.startswith("http") else EMENU_HOST + href
+                            # Descargar usando las cookies de la sesión
+                            resp = await ctx.request.get(url)
+                            if resp.ok:
+                                data = await resp.body()
+                                return {"success": True, "data": data,
+                                        "filename": (name or "constancia") + ".pdf"}
+                            return {"success": False, "error": f"SUNAT devolvió {resp.status} al bajar el PDF."}
+                except Exception:
+                    continue
+
+            return {"success": False, "error": "No se encontró el adjunto del mensaje en SUNAT."}
+        finally:
+            await browser.close()
