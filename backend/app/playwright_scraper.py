@@ -143,14 +143,31 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
         await page.fill("#txtRuc", ruc)
         await page.fill("#txtUsuario", usuario)
         await page.fill("#txtContrasena", password)
-        await page.click("#btnAceptar")
-        await page.wait_for_timeout(4000)
+
+        # Detectar CAPTCHA visible antes de enviar
         try:
-            await page.wait_for_load_state("networkidle", timeout=25000)
+            captcha_img = page.locator("img[src*='captcha' i], img[src*='Captcha'], #imgCaptcha, .captcha")
+            if await captcha_img.count() > 0 and await captcha_img.first.is_visible():
+                return {"success": False, "notifications": [],
+                        "error": "SUNAT está pidiendo un CAPTCHA. Espera unos minutos antes de volver a sincronizar (SUNAT lo activa tras varios intentos seguidos).",
+                        "error_type": "captcha"}
         except Exception:
             pass
 
-        # ── 4. Verificar credenciales ─────────────────────────────────────
+        await page.click("#btnAceptar")
+
+        # Esperar a que el login redirija FUERA de api-seguridad hacia el menú
+        try:
+            await page.wait_for_url("**e-menu.sunat.gob.pe**", timeout=25000)
+        except Exception:
+            pass
+        await page.wait_for_timeout(2500)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
+
+        # ── 4. Verificar credenciales / estado del login ──────────────────
         body = (await page.inner_text("body")).lower()
         if any(e in body for e in ["contraseña incorrecta", "usuario o contraseña",
                                     "datos incorrectos", "no es válido", "no válido"]):
@@ -161,6 +178,26 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
             return {"success": False, "notifications": [],
                     "error": "SUNAT rechazó la sesión (token inválido). Reintenta en unos segundos.",
                     "error_type": "session_error"}
+
+        # Si seguimos atascados en el login (j_security_check / api-seguridad)
+        if "api-seguridad.sunat.gob.pe" in page.url or "j_security_check" in page.url:
+            # ¿CAPTCHA tras el envío?
+            if "captcha" in body or "código de imagen" in body or "codigo de imagen" in body:
+                return {"success": False, "notifications": [],
+                        "error": "SUNAT está pidiendo un CAPTCHA tras varios intentos. Espera 5-10 minutos antes de volver a sincronizar.",
+                        "error_type": "captcha"}
+            # Reintento único: a veces la redirección no completa a la primera
+            try:
+                await page.wait_for_timeout(3000)
+                if "api-seguridad" in page.url:
+                    await page.reload(wait_until="networkidle", timeout=20000)
+                    await page.wait_for_timeout(2000)
+            except Exception:
+                pass
+            if "api-seguridad.sunat.gob.pe" in page.url or "j_security_check" in page.url:
+                return {"success": False, "notifications": [],
+                        "error": "El login con SUNAT no completó (posible CAPTCHA o sesión activa en otro lugar). Cierra tu sesión SOL en el navegador y espera unos minutos antes de reintentar.",
+                        "error_type": "login_incomplete"}
 
         # ── 5. Popup "Valida tus datos de contacto" ───────────────────────
         for label in ["Finalizar", "Continuar sin confirmar"]:
