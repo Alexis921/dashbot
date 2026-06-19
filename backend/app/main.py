@@ -20,7 +20,7 @@ load_dotenv()
 
 from app.database import get_db, init_db, Notification, SyncLog
 from app.scraper import scrape_sunat_notifications, get_demo_notifications
-from app.playwright_scraper import scrape_with_playwright, download_pdf_from_sunat
+from app.playwright_scraper import scrape_with_playwright, download_pdf_with_cookies
 from app.email_service import send_email_summary
 from app.ai_summary import generate_ai_summary, generate_ai_summary_expert, generate_notification_interpretation
 
@@ -183,6 +183,9 @@ async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
     db.commit()
 
     session["last_sync"] = datetime.utcnow()
+    # Guardar cookies de la sesión SUNAT para descargar PDFs sin re-loguear
+    session["sunat_cookies"] = result.get("cookies", [])
+    session["buzon_url"] = result.get("buzon_url", "")
 
     # Generar resumen IA experto
     ai_summary = await generate_ai_summary_expert(result["notifications"])
@@ -333,9 +336,13 @@ async def download_pdf(notif_id: str, session_id: str, db: Session = Depends(get
     if not sunat_msg_id.isdigit():
         raise HTTPException(404, "No se pudo identificar el adjunto en SUNAT.")
 
-    # Re-loguear en SUNAT con las credenciales en memoria y descargar el PDF
-    result = await download_pdf_from_sunat(
-        session["ruc"], session["usuario"], session["password"], sunat_msg_id
+    # Descargar el PDF reusando las cookies de la sesión activa (sin re-loguear)
+    cookies = session.get("sunat_cookies")
+    if not cookies:
+        raise HTTPException(503, "Sesión SUNAT no disponible. Vuelve a sincronizar primero.")
+
+    result = await download_pdf_with_cookies(
+        cookies, session["ruc"], sunat_msg_id, session.get("buzon_url", "")
     )
 
     if not result.get("success"):

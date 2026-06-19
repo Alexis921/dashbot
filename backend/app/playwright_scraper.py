@@ -230,7 +230,13 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
                     "error_type": "buzon_empty"}
 
         notifications = _build(notifs_raw, ruc)
-        return {"success": True, "notifications": notifications, "error": None}
+        # Capturar cookies de la sesión activa para descargar PDFs sin re-loguear
+        try:
+            cookies = await ctx.cookies()
+        except Exception:
+            cookies = []
+        return {"success": True, "notifications": notifications, "error": None,
+                "cookies": cookies, "buzon_url": buzon.url}
 
     except PWTimeout as e:
         return {"success": False, "notifications": [],
@@ -283,24 +289,28 @@ def _build(items: list, ruc: str) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Descarga de PDF on-demand: re-login + abrir mensaje + bajar constancia
+# Descarga de PDF on-demand REUSANDO las cookies de la sesión activa
+# (evita el doble login que SUNAT bloquea)
 # ─────────────────────────────────────────────────────────────────────────
-async def download_pdf_from_sunat(ruc: str, usuario: str, password: str, sunat_msg_id: str) -> dict:
-    """Re-loguea, abre el mensaje por ID y descarga el PDF de la constancia."""
+async def download_pdf_with_cookies(cookies: list, ruc: str, sunat_msg_id: str,
+                                     buzon_url: str = "") -> dict:
+    """Reusa las cookies de la sesión SUNAT para abrir el mensaje y bajar el PDF."""
     try:
         from playwright.async_api import async_playwright  # noqa
     except ImportError:
         return {"success": False, "error": "Playwright no instalado."}
+    if not cookies:
+        return {"success": False, "error": "Sesión SUNAT expirada. Vuelve a sincronizar."}
     try:
         return await asyncio.wait_for(
-            _download_pdf(ruc, usuario, password, sunat_msg_id), timeout=110.0)
+            _download_pdf_cookies(cookies, ruc, sunat_msg_id, buzon_url), timeout=90.0)
     except asyncio.TimeoutError:
         return {"success": False, "error": "Timeout al descargar PDF de SUNAT."}
     except Exception as e:
         return {"success": False, "error": f"Error: {str(e)[:200]}"}
 
 
-async def _download_pdf(ruc, usuario, password, sunat_msg_id) -> dict:
+async def _download_pdf_cookies(cookies, ruc, sunat_msg_id, buzon_url) -> dict:
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
@@ -309,54 +319,44 @@ async def _download_pdf(ruc, usuario, password, sunat_msg_id) -> dict:
             args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
         )
         ctx = await browser.new_context(locale="es-PE", viewport={"width": 1366, "height": 900})
-        page = await ctx.new_page()
         try:
-            # Login (mismo flujo)
-            await page.goto(SOL_URL, wait_until="networkidle", timeout=30000)
-            await page.wait_for_timeout(1500)
-            page = await _click_maybe_newtab(
-                ctx, page,
-                "a:has-text('Operaciones en Línea'), a:has-text('Ingresar')")
-            await page.wait_for_selector("#txtRuc", timeout=15000)
-            await page.fill("#txtRuc", ruc)
-            await page.fill("#txtUsuario", usuario)
-            await page.fill("#txtContrasena", password)
-            await page.click("#btnAceptar")
-            await page.wait_for_timeout(4000)
-            for label in ["Finalizar", "Continuar sin confirmar"]:
-                try:
-                    btn = page.locator(f"button:has-text('{label}'), input[value*='{label}']")
-                    if await btn.count() > 0:
-                        await btn.first.click()
-                        await page.wait_for_timeout(2000)
-                except Exception:
-                    pass
-            buzon = await _click_maybe_newtab(
-                ctx, page, "a:has-text('Buzón Electrónico')")
+            await ctx.add_cookies(cookies)
+            page = await ctx.new_page()
+
+            # Navegar al menú con la sesión restaurada por cookies
+            menu_url = (EMENU_HOST + "/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*")
+            await page.goto(menu_url, wait_until="networkidle", timeout=25000)
+            await page.wait_for_timeout(2000)
+
+            # Si la sesión expiró, SUNAT redirige al login
+            if "txtRuc" in (await page.content()) or "loginMenuSol" in page.url:
+                return {"success": False, "error": "La sesión SUNAT expiró. Vuelve a sincronizar."}
+
+            # Abrir Buzón Electrónico
+            buzon = await _click_maybe_newtab(ctx, page, "a:has-text('Buzón Electrónico')")
             await buzon.wait_for_timeout(3000)
 
-            # Abrir el mensaje específico y leer el link bajarArchivo
+            # Abrir el mensaje y leer el link bajarArchivo
             for fr in buzon.frames:
                 try:
                     li = fr.locator(f"li#{sunat_msg_id} a.linkMensaje")
                     if await li.count() > 0:
                         await li.first.click()
                         await buzon.wait_for_timeout(2500)
-                        adj = fr.locator("#listArchivosAdjuntos a[href*='bajarArchivo'], a[href*='bajarArchivo']")
+                        adj = fr.locator("a[href*='bajarArchivo']")
                         if await adj.count() > 0:
                             href = await adj.first.get_attribute("href")
                             name = (await adj.first.inner_text()).strip()
                             url = href if href.startswith("http") else EMENU_HOST + href
-                            # Descargar usando las cookies de la sesión
                             resp = await ctx.request.get(url)
                             if resp.ok:
                                 data = await resp.body()
                                 return {"success": True, "data": data,
-                                        "filename": (name or "constancia") + ".pdf"}
+                                        "filename": (name.split()[0] if name else "constancia") + ".pdf"}
                             return {"success": False, "error": f"SUNAT devolvió {resp.status} al bajar el PDF."}
                 except Exception:
                     continue
 
-            return {"success": False, "error": "No se encontró el adjunto del mensaje en SUNAT."}
+            return {"success": False, "error": "No se encontró el adjunto. Vuelve a sincronizar e intenta de nuevo."}
         finally:
             await browser.close()
