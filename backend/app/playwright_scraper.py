@@ -22,6 +22,13 @@ SUNAT_SOL_URL   = "https://www.sunat.gob.pe/sol.html"
 SUNAT_MENU_URL  = "https://e-menu.sunat.gob.pe/cl-ti-itmenu/MenuInternet.htm?pestana=*&agrupacion=*"
 SUNAT_BUZON_URL = "https://e-menu.sunat.gob.pe/cl-ti-itbuzonelectronico/bin/ejecBuzon.do"
 OAUTH_DOMAIN    = "api-seguridad.sunat.gob.pe"
+# URL OAuth directa — client_id fijo de SUNAT SOL
+SUNAT_OAUTH_URL = (
+    "https://api-seguridad.sunat.gob.pe/v1/clientessol/"
+    "4f3b88b3-d9d6-402a-b85d-6a0bc857746a/oauth2/loginMenuSol"
+    "?lang=es-PE&showDni=true&showLanguages=false"
+    "&originalUrl=https://e-menu.sunat.gob.pe/cl-ti-itmenu/AutenticaMenuInternet.htm"
+)
 
 
 def _is_urgent(subject: str) -> bool:
@@ -81,29 +88,12 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
     from playwright.async_api import TimeoutError as PWTimeout
 
     try:
-        # ── PASO 1: sol.html ─────────────────────────────────────────────────
-        await page.goto(SUNAT_SOL_URL, wait_until="networkidle", timeout=25000)
-        await page.wait_for_timeout(1500)
-
-        # Hacer clic en "Operaciones en Línea" o "Ingresar"
-        ingresar = page.locator("a:has-text('Operaciones en Línea'), a:has-text('Ingresar'), button:has-text('Ingresar')")
-        if await ingresar.count() > 0:
-            await ingresar.first.click()
-            await page.wait_for_load_state("networkidle", timeout=20000)
+        # ── PASO 1: Ir directamente al formulario OAuth de SUNAT ─────────────
+        # El client_id 4f3b88b3... es fijo de SUNAT SOL (no cambia)
+        await page.goto(SUNAT_OAUTH_URL, wait_until="networkidle", timeout=30000)
         await page.wait_for_timeout(2000)
 
-        # ── PASO 2: OAuth en api-seguridad.sunat.gob.pe ──────────────────────
-        # Si el click anterior no redirigió al OAuth, navegamos directamente
-        if OAUTH_DOMAIN not in page.url:
-            # Buscar el link de OAuth en la página actual
-            oauth_link = page.locator(f"a[href*='{OAUTH_DOMAIN}']")
-            if await oauth_link.count() > 0:
-                await oauth_link.first.click()
-                await page.wait_for_load_state("networkidle", timeout=20000)
-
-        await page.wait_for_timeout(2000)
-
-        # ── PASO 3: Llenar formulario OAuth ──────────────────────────────────
+        # ── PASO 2: Llenar formulario OAuth ──────────────────────────────────
         if OAUTH_DOMAIN in page.url:
             # Detectar campos reales del formulario OAuth
             inputs = await page.evaluate("""() =>
@@ -166,13 +156,16 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
             await page.wait_for_load_state("networkidle", timeout=20000)
             await page.wait_for_timeout(2000)
         else:
-            # No llegamos al OAuth — reportar campos de la página actual
+            # No llegamos al OAuth — diagnóstico
             inputs_info = await page.evaluate("""() =>
                 [...document.querySelectorAll('input')].map(e => ({name:e.name,id:e.id,type:e.type}))
             """)
+            all_links = await page.evaluate("""() =>
+                [...document.querySelectorAll('a[href]')].slice(0,10).map(a => a.href)
+            """)
             return {
                 "success": False, "notifications": [],
-                "error": f"No se llegó al formulario OAuth de SUNAT. URL: {page.url} | Inputs: {inputs_info[:8]}",
+                "error": f"URL: {page.url} | Inputs: {inputs_info[:6]} | Links: {all_links[:6]}",
                 "error_type": "oauth_not_reached",
             }
 
