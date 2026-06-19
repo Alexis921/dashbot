@@ -205,66 +205,67 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
         except Exception:
             pass
 
-        # ── PASO 6: Abrir Buzón Electrónico (puede abrir nueva pestaña) ─────────
-        context = page.context
-        buzon_page = None
+        # ── PASO 6: Asegurarse de estar en MenuInternet y hacer click en Buzón ──
+        # Después del login SUNAT redirige al menú. Nos aseguramos de estar ahí.
+        if "MenuInternet" not in page.url and "menu" not in page.url.lower():
+            await page.goto(SUNAT_MENU_URL, wait_until="networkidle", timeout=20000)
+            await page.wait_for_timeout(2000)
 
-        # Escuchar nueva pestaña antes de hacer click
-        async with context.expect_page() as new_page_info:
+        # Buscar y hacer click en "Buzón Electrónico" en todos los frames
+        for frame in [page] + list(page.frames):
             try:
-                buzon_link = page.locator(
+                link = frame.locator(
                     "a:has-text('Buzón Electrónico'), "
-                    "a:has-text('Buzon Electronico'), "
-                    "a[href*='buzon' i]"
+                    "a:has-text('Buzon Electronico')"
                 )
-                if await buzon_link.count() > 0:
-                    await buzon_link.first.click()
-                    buzon_page = await new_page_info.value
-                    await buzon_page.wait_for_load_state("networkidle", timeout=25000)
+                if await link.count() > 0:
+                    await link.first.click()
+                    await page.wait_for_load_state("networkidle", timeout=20000)
+                    break
             except Exception:
-                buzon_page = None
+                continue
 
-        # Si no abrió nueva pestaña, quedarse en la página actual
-        if buzon_page is None:
-            buzon_page = page
+        await page.wait_for_timeout(4000)
 
-        await buzon_page.wait_for_timeout(3000)
+        # ── PASO 7: Buscar frame con contenido del buzón ──────────────────────
+        # El buzón carga en un frame interno del menú
+        buzon_frame = page  # fallback
+        for frame in page.frames:
+            try:
+                txt = (await frame.inner_text("body")).lower()
+                if "asunto" in txt and ("notificac" in txt or "buzon" in txt or "buzón" in txt):
+                    buzon_frame = frame
+                    break
+            except Exception:
+                continue
 
-        # ── PASO 7: Clic en "Buzón Notificaciones" en panel izquierdo ─────────
+        # Clic en "Buzón Notificaciones" dentro del frame
         try:
-            notif_btn = buzon_page.locator(
+            btn = buzon_frame.locator(
                 "a:has-text('Buzón Notificaciones'), "
-                "span:has-text('Buzón Notificaciones'), "
                 "a:has-text('Notificaciones')"
             )
-            if await notif_btn.count() > 0:
-                await notif_btn.first.click()
-                await buzon_page.wait_for_timeout(4000)
+            if await btn.count() > 0:
+                await btn.first.click()
+                await page.wait_for_timeout(4000)
         except Exception:
             pass
 
-        # Esperar que cargue lista AJAX
-        try:
-            await buzon_page.wait_for_selector(
-                "[class*='asunto'], li, table tr td, div:has-text('ASUNTO:')",
-                timeout=10000,
-            )
-        except Exception:
-            pass
-        await buzon_page.wait_for_timeout(2000)
-
-        # ── PASO 8: Extraer notificaciones ────────────────────────────────────
-        notifications = await _extract_buzon(buzon_page, ruc)
+        # ── PASO 8: Extraer notificaciones de todos los frames ────────────────
+        notifications = await _extract_buzon(page, ruc)
 
         if not notifications:
-            body_text = ""
-            try:
-                body_text = (await buzon_page.inner_text("body"))[:400]
-            except Exception:
-                pass
+            # Diagnóstico: mostrar texto de cada frame
+            frames_text = {}
+            for i, frame in enumerate(page.frames):
+                try:
+                    t = (await frame.inner_text("body"))[:200]
+                    frames_text[f"frame{i}({frame.url[:60]})"] = t
+                except Exception:
+                    pass
             return {
                 "success": False, "notifications": [],
-                "error": f"Buzón abierto pero sin notificaciones extraídas. URL: {buzon_page.url} | Body: {body_text}",
+                "error": f"Sin notificaciones. Frames: {frames_text}",
                 "error_type": "buzon_empty_extract",
             }
 
