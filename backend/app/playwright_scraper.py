@@ -206,28 +206,50 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
             pass
 
         # ── PASO 6: Navegar al Buzón Electrónico ─────────────────────────────
-        # Intentar link "Buzón Electrónico" en el menú
-        buzon_link = page.locator("a:has-text('Buzón Electrónico'), a[href*='buzon' i], a[href*='Buzon' i]")
-        if await buzon_link.count() > 0:
-            await buzon_link.first.click()
-            await page.wait_for_load_state("networkidle", timeout=20000)
-        else:
+        # Intentar link "Buzón Electrónico" en el menú (busca en todos los frames)
+        clicked_buzon = False
+        for frame in page.frames:
+            try:
+                buzon_link = frame.locator(
+                    "a:has-text('Buzón Electrónico'), "
+                    "a:has-text('Buzon Electronico'), "
+                    "a[href*='buzon' i], a[href*='Buzon' i]"
+                )
+                if await buzon_link.count() > 0:
+                    await buzon_link.first.click()
+                    await page.wait_for_load_state("networkidle", timeout=20000)
+                    clicked_buzon = True
+                    break
+            except Exception:
+                continue
+
+        if not clicked_buzon:
             await page.goto(SUNAT_BUZON_URL, wait_until="networkidle", timeout=20000)
 
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(4000)
 
-        # ── PASO 7: Extraer notificaciones ───────────────────────────────────
+        # ── PASO 7: Extraer notificaciones (buscar en todos los frames) ───────
         notifications = await _extract_buzon(page, ruc)
 
         if not notifications:
-            body_lower = (await page.inner_text("body")).lower()
-            if any(w in body_lower for w in ["buzón", "buzon", "notificaci", "bandeja"]):
+            # Verificar en todos los frames si estamos en el buzón
+            all_text = ""
+            for frame in page.frames:
+                try:
+                    all_text += (await frame.inner_text("body")).lower()
+                except Exception:
+                    pass
+
+            if any(w in all_text for w in ["buzón", "buzon", "notificaci", "bandeja", "asunto"]):
                 return {"success": True, "notifications": [], "error": None,
-                        "note": "Buzón accedido. Sin notificaciones."}
+                        "note": "Buzón accedido. Sin notificaciones visibles."}
+
+            # Diagnóstico de frames
+            frame_info = [(f.url, ) for f in page.frames if f.url and "about:blank" not in f.url]
             return {
                 "success": False, "notifications": [],
-                "error": f"Login completado pero no se accedió al buzón. URL final: {page.url}",
-                "error_type": "buzon_not_reached",
+                "error": f"Llegamos al buzón pero no se encontraron notificaciones. URL: {page.url} | Frames: {frame_info}",
+                "error_type": "buzon_empty_extract",
             }
 
         return {"success": True, "notifications": notifications, "error": None}
@@ -247,55 +269,82 @@ async def _do_login_and_scrape(page, ruc: str, usuario: str, password: str) -> d
 
 
 async def _extract_buzon(page, ruc: str) -> list:
-    """Extrae notificaciones del buzón SUNAT (panel izquierdo con lista)."""
-    notifications = []
+    """Extrae notificaciones del buzón SUNAT buscando en todos los frames."""
 
-    # Esperar lista de notificaciones
+    # Esperar contenido en la página principal o cualquier frame
+    for frame in page.frames:
+        try:
+            await frame.wait_for_selector(
+                "table tr td, li, .asunto, [class*='item'], [class*='mensaje']",
+                timeout=8000,
+            )
+            break
+        except Exception:
+            continue
+
+    # Intentar extracción en cada frame
+    all_items = []
+    for frame in page.frames:
+        items = await _extract_frame_items(frame)
+        all_items.extend(items)
+        if len(all_items) >= 5:
+            break
+
+    return _build_notifications(all_items, ruc)
+
+
+async def _extract_frame_items(frame) -> list:
+    """Extrae items de notificaciones de un frame específico."""
     try:
-        await page.wait_for_selector(".items-list li, table tr td, .mensaje, [class*='item']", timeout=10000)
-    except Exception:
-        pass
+        return await frame.evaluate("""() => {
+            const results = [];
 
-    # Extraer via JavaScript — buscar en toda la página
-    items = await page.evaluate("""() => {
-        const results = [];
-
-        // Intentar tabla clásica
-        document.querySelectorAll('table tr').forEach((row, idx) => {
-            if (idx === 0) return;
-            const cells = [...row.querySelectorAll('td')].map(c => c.innerText.trim());
-            if (cells.length >= 2 && cells[0].length > 10) {
-                const link = row.querySelector('a[href]');
-                results.push({
-                    subject: cells[0],
-                    date: cells[1] || '',
-                    extra: cells.slice(2).join(' | '),
-                    pdfHref: link ? link.href : '',
-                    hasAttach: !!row.querySelector('img[src*="clip"], img[alt*="adjunto"], a[href*=".pdf"], a[href*="adjunto"]')
-                });
-            }
-        });
-
-        // Intentar lista de mensajes (nuevo buzón SUNAT)
-        if (results.length === 0) {
-            document.querySelectorAll('.asunto, [class*="asunto"], [class*="subject"], li[class*="item"]').forEach(el => {
-                const text = el.innerText.trim();
-                if (text.length > 10) {
-                    const link = el.querySelector('a') || el.closest('li')?.querySelector('a');
+            // Tabla clásica
+            document.querySelectorAll('table tr').forEach((row, idx) => {
+                if (idx === 0) return;
+                const cells = [...row.querySelectorAll('td')].map(c => c.innerText.trim());
+                if (cells.length >= 2 && cells[0].length > 10) {
+                    const link = row.querySelector('a[href]');
+                    const pdfLink = row.querySelector('a[href*=".pdf"], a[href*="adjunto"], a[href*="constancia"]');
                     results.push({
-                        subject: text.split('\\n')[0],
-                        date: '',
-                        extra: text,
-                        pdfHref: link ? link.href : '',
-                        hasAttach: !!el.querySelector('[class*="clip"], [class*="attach"]')
+                        subject: cells[0],
+                        date: cells[1] || '',
+                        extra: cells.slice(2).join(' | '),
+                        pdfHref: pdfLink ? pdfLink.href : (link ? link.href : ''),
+                        hasAttach: !!(row.querySelector('img[src*="clip"]') || pdfLink)
                     });
                 }
             });
-        }
 
-        return results.slice(0, 100);
-    }""")
+            // Lista de notificaciones nueva (div/li)
+            if (results.length === 0) {
+                document.querySelectorAll(
+                    '.asunto, [class*="asunto"], [class*="subject"], ' +
+                    'li[class*="item"], li[class*="mensaje"], .list-group-item'
+                ).forEach(el => {
+                    const text = el.innerText.trim();
+                    if (text.length > 10) {
+                        const pdfLink = el.querySelector('a[href*=".pdf"], a[href*="adjunto"], a[href*="constancia"]');
+                        const anyLink = el.querySelector('a[href]') || el.closest('li, tr')?.querySelector('a[href]');
+                        results.push({
+                            subject: text.split('\\n')[0].trim(),
+                            date: '',
+                            extra: text,
+                            pdfHref: pdfLink ? pdfLink.href : (anyLink ? anyLink.href : ''),
+                            hasAttach: !!pdfLink
+                        });
+                    }
+                });
+            }
 
+            return results.slice(0, 100);
+        }""")
+    except Exception:
+        return []
+
+
+def _build_notifications(items: list, ruc: str) -> list:
+    notifications = []
     for i, item in enumerate(items or [], 1):
         subject = (item.get("subject") or "").strip()
         if not subject or len(subject) < 5:
@@ -309,12 +358,12 @@ async def _extract_buzon(page, ruc: str) -> list:
                     date_val = datetime.strptime(m.group(), "%d/%m/%Y")
                 except Exception:
                     pass
-
         pdf_href = item.get("pdfHref", "")
+        ref_match = re.search(r"N[°º]\s*([\d\-]+)", subject)
         notifications.append({
             "id": f"S-{ruc}-{i}-{abs(hash(subject)) & 0xFFFFFF}",
             "subject": subject[:300],
-            "reference_number": re.search(r"N[°º]\s*([\d\-]+)", subject).group(1) if re.search(r"N[°º]\s*([\d\-]+)", subject) else "",
+            "reference_number": ref_match.group(1) if ref_match else "",
             "date_received": date_val.isoformat(),
             "sender": "SUNAT",
             "status": "nuevo",
@@ -325,5 +374,4 @@ async def _extract_buzon(page, ruc: str) -> list:
             "is_urgent": _is_urgent(subject),
             "ruc": ruc,
         })
-
     return notifications
