@@ -101,6 +101,15 @@ export async function apiDownloadPdf(empresaId, notifId, filename) {
   URL.revokeObjectURL(url)
 }
 
+// ── Programación ───────────────────────────────────────────
+export async function apiGetProgramacion() {
+  return req('/api/programacion')
+}
+
+export async function apiSaveProgramacion(cfg) {
+  return req('/api/programacion', { method: 'PUT', body: cfg })
+}
+
 // ── Demo ───────────────────────────────────────────────────
 export async function apiDemoSync() {
   return req('/api/demo/sync', { method: 'POST', auth: false })

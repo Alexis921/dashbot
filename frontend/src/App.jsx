@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import LoginForm from './components/LoginForm'
 import ChatInterface from './components/ChatInterface'
 import Empresas from './components/Empresas'
+import Programacion from './components/Programacion'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
@@ -96,6 +97,9 @@ export default function App() {
   function renderModule() {
     if (activeModule === 'empresas' && !demoMode) {
       return <Empresas onOpenEmpresa={openEmpresa} />
+    }
+    if (activeModule === 'programacion' && !demoMode) {
+      return <Programacion />
     }
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />

@@ -60,6 +60,25 @@ class Empresa(Base):
     user = relationship("User", back_populates="empresas")
 
 
+class Programacion(Base):
+    """Configuración de extracción automática programada (una por usuario)."""
+    __tablename__ = "programaciones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, unique=True, nullable=False)
+    activo = Column(Boolean, default=False)
+    frecuencia = Column(String(30), default="cada_x_horas")  # cada_x_horas | diario
+    hora_inicio = Column(String(5), default="08:00")          # "HH:MM"
+    repetir_cada = Column(Integer, default=6)                  # horas
+    zona_horaria = Column(String(50), default="America/Lima")
+    correo_envio = Column(String(200))
+    fuente_sol = Column(Boolean, default=True)
+    fuente_sunafil = Column(Boolean, default=False)
+    last_run = Column(DateTime)
+    next_run = Column(DateTime)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

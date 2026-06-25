@@ -1,5 +1,5 @@
 app = "dashbot-backend"
-primary_region = "gru"
+primary_region = "dfw"
 
 [build]
   dockerfile = "Dockerfile"
@@ -7,6 +7,11 @@ primary_region = "gru"
 [env]
   ALLOWED_ORIGINS = "https://dashbot.pro,https://www.dashbot.pro,https://frontend-ashy-nine-49.vercel.app"
   SECRET_KEY = "dashbot2024xsecret"
+  DATABASE_URL = "sqlite:////data/dashbot.db"
+
+[mounts]
+  source = "dashbot_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080

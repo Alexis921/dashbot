@@ -11,6 +11,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 cryptography==42.0.8
+tzdata==2024.1
 pydantic[email]==2.7.2
 playwright==1.44.0
 psycopg2-binary==2.9.9

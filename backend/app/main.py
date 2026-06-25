@@ -17,7 +17,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.database import get_db, init_db, User, Empresa, Notification, SyncLog
+import asyncio
+from app.database import get_db, init_db, User, Empresa, Notification, SyncLog, Programacion
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
     encrypt_secret, decrypt_secret,
@@ -29,6 +30,9 @@ from app.email_service import send_email_summary
 from app.ai_summary import (
     generate_ai_summary_expert, generate_notification_interpretation,
 )
+from app.scheduler import schedule_loop, run_due_schedules, compute_next_run
+
+CRON_TOKEN = os.getenv("CRON_TOKEN", "dashbot-cron-2026")
 
 app = FastAPI(title="Dashbot API", version="2.0.0")
 
@@ -74,10 +78,23 @@ class EmailRequest(BaseModel):
     to_email: str
 
 
+class ProgramacionUpdate(BaseModel):
+    activo: bool = False
+    frecuencia: str = "cada_x_horas"
+    hora_inicio: str = "08:00"
+    repetir_cada: int = 6
+    zona_horaria: str = "America/Lima"
+    correo_envio: Optional[str] = ""
+    fuente_sol: bool = True
+    fuente_sunafil: bool = False
+
+
 # ── Startup ────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Lanzar el worker de extracción programada en segundo plano
+    asyncio.create_task(schedule_loop())
 
 
 @app.get("/health")
@@ -226,18 +243,13 @@ def _get_owned_empresa(empresa_id: int, user: User, db: Session) -> Empresa:
 
 
 # ── Sincronización del buzón de una empresa ──────────────────────────────────
-@app.post("/api/empresas/{empresa_id}/sync")
-async def sync_empresa(
-    empresa_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    empresa = _get_owned_empresa(empresa_id, user, db)
-
+async def sync_empresa_core(empresa: Empresa, db: Session, want_ai: bool = True) -> dict:
+    """Lógica central de sincronización. Reutilizada por el endpoint y el scheduler."""
     try:
         sol_password = decrypt_secret(empresa.sol_password_enc)
     except Exception:
-        raise HTTPException(500, "No se pudo descifrar las credenciales. Re-registra la empresa.")
+        return {"success": False, "empresa_id": empresa.id, "notifications": [],
+                "error": "No se pudo descifrar las credenciales.", "error_type": "decrypt_error"}
 
     result = await scrape_with_playwright(empresa.ruc, empresa.sol_usuario, sol_password)
 
@@ -245,25 +257,21 @@ async def sync_empresa(
         empresa.estado = "error"
         db.commit()
         return {
-            "success": False,
-            "empresa_id": empresa_id,
+            "success": False, "empresa_id": empresa.id,
             "error": result.get("error", "No se pudo conectar a SUNAT."),
             "error_type": result.get("error_type", "sunat_no_disponible"),
             "notifications": [],
         }
 
-    # Confirmar razón social desde SUNAT si la teníamos vacía
     if result.get("razon_social") and not empresa.razon_social:
         empresa.razon_social = result["razon_social"][:300]
 
-    # Guardar cookies de sesión en memoria para descargar PDFs
-    _sunat_sessions[empresa_id] = {
+    _sunat_sessions[empresa.id] = {
         "cookies": result.get("cookies", []),
         "buzon_url": result.get("buzon_url", ""),
         "ts": datetime.utcnow(),
     }
 
-    # Persistir notificaciones
     new_count = 0
     for n in result["notifications"]:
         existing = db.query(Notification).filter(Notification.id == n["id"]).first()
@@ -275,7 +283,7 @@ async def sync_empresa(
                 except Exception:
                     pass
             db.add(Notification(
-                id=n["id"], empresa_id=empresa_id, ruc=empresa.ruc,
+                id=n["id"], empresa_id=empresa.id, ruc=empresa.ruc,
                 subject=n.get("subject", ""), sender=n.get("sender", "SUNAT"),
                 date_received=date_val, reference_number=n.get("reference_number", ""),
                 status=n.get("status", "nuevo"), body_text=n.get("body_text", ""),
@@ -289,14 +297,14 @@ async def sync_empresa(
     empresa.estado = "activa"
     empresa.last_login = datetime.utcnow()
     empresa.last_sync = datetime.utcnow()
-    db.add(SyncLog(ruc=empresa.ruc, empresa_id=empresa_id, status="ok", count_new=new_count))
+    db.add(SyncLog(ruc=empresa.ruc, empresa_id=empresa.id, status="ok", count_new=new_count))
     db.commit()
 
-    ai_summary = await generate_ai_summary_expert(result["notifications"])
+    ai_summary = await generate_ai_summary_expert(result["notifications"]) if want_ai else ""
 
     return {
         "success": True,
-        "empresa_id": empresa_id,
+        "empresa_id": empresa.id,
         "razon_social": empresa.razon_social,
         "new_count": new_count,
         "total": len(result["notifications"]),
@@ -304,6 +312,16 @@ async def sync_empresa(
         "ai_summary": ai_summary,
         "synced_at": datetime.utcnow().isoformat(),
     }
+
+
+@app.post("/api/empresas/{empresa_id}/sync")
+async def sync_empresa(
+    empresa_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    return await sync_empresa_core(empresa, db, want_ai=True)
 
 
 @app.get("/api/empresas/{empresa_id}/notifications")
@@ -364,6 +382,69 @@ async def download_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ── Programación de extracción automática ────────────────────────────────────
+def _prog_dict(p: Programacion) -> dict:
+    return {
+        "activo": p.activo,
+        "frecuencia": p.frecuencia,
+        "hora_inicio": p.hora_inicio,
+        "repetir_cada": p.repetir_cada,
+        "zona_horaria": p.zona_horaria,
+        "correo_envio": p.correo_envio or "",
+        "fuente_sol": p.fuente_sol,
+        "fuente_sunafil": p.fuente_sunafil,
+        "last_run": p.last_run.isoformat() if p.last_run else None,
+        "next_run": p.next_run.isoformat() if p.next_run else None,
+    }
+
+
+@app.get("/api/programacion")
+async def get_programacion(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    prog = db.query(Programacion).filter(Programacion.user_id == user.id).first()
+    if not prog:
+        return {"programacion": {
+            "activo": False, "frecuencia": "cada_x_horas", "hora_inicio": "08:00",
+            "repetir_cada": 6, "zona_horaria": "America/Lima", "correo_envio": "",
+            "fuente_sol": True, "fuente_sunafil": False, "last_run": None, "next_run": None,
+        }}
+    return {"programacion": _prog_dict(prog)}
+
+
+@app.put("/api/programacion")
+async def save_programacion(
+    req: ProgramacionUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    repetir = max(1, int(req.repetir_cada or 6))
+    prog = db.query(Programacion).filter(Programacion.user_id == user.id).first()
+    if not prog:
+        prog = Programacion(user_id=user.id)
+        db.add(prog)
+
+    prog.activo = req.activo
+    prog.frecuencia = req.frecuencia
+    prog.hora_inicio = req.hora_inicio
+    prog.repetir_cada = repetir
+    prog.zona_horaria = req.zona_horaria
+    prog.correo_envio = (req.correo_envio or "").strip()
+    prog.fuente_sol = req.fuente_sol
+    prog.fuente_sunafil = req.fuente_sunafil
+    prog.updated_at = datetime.utcnow()
+    prog.next_run = compute_next_run(req.hora_inicio, repetir, req.zona_horaria) if req.activo else None
+    db.commit()
+    db.refresh(prog)
+    return {"success": True, "programacion": _prog_dict(prog)}
+
+
+@app.post("/api/cron/tick")
+async def cron_tick(token: str = ""):
+    """Dispara las extracciones vencidas. Protegido por token (para cron externo)."""
+    if token != CRON_TOKEN:
+        raise HTTPException(403, "Token inválido.")
+    return await run_due_schedules()
 
 
 # ── IA: interpretar una notificación ─────────────────────────────────────────
