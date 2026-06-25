@@ -124,6 +124,31 @@ class Notification(Base):
     synced_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Obligacion(Base):
+    """Obligación tributaria — entidad central de la Agenda Tributaria Inteligente."""
+    __tablename__ = "obligaciones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    clave = Column(String(120), unique=True, index=True)   # idempotencia auto-generadas
+
+    tipo = Column(String(40), default="otro")              # declaracion_mensual | sire | detraccion | otro
+    titulo = Column(String(300))
+    descripcion = Column(Text)
+    periodo = Column(String(40))                           # "Enero 2026"
+    fecha_vencimiento = Column(DateTime, index=True)
+    estado = Column(String(30), default="pendiente")       # ver ESTADOS en obligaciones.py
+    prioridad = Column(String(20), default="media")        # alta | media | baja
+    responsable = Column(String(120))
+    monto = Column(String(40))                             # opcional, texto libre por ahora
+    origen = Column(String(30), default="manual")          # auto_cronograma | manual | ia_documento
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+
 class Cronograma(Base):
     """Cache del cronograma oficial SUNAT por (año, último dígito de RUC)."""
     __tablename__ = "cronogramas"

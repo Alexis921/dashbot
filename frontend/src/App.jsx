@@ -5,10 +5,12 @@ import Empresas from './components/Empresas'
 import Programacion from './components/Programacion'
 import Configuracion from './components/Configuracion'
 import Alertas from './components/Alertas'
+import Agenda from './components/Agenda'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
   { id: 'notificaciones', label: 'Notificaciones', icon: '🔔' },
+  { id: 'agenda',         label: 'Agenda Tributaria', icon: '📆' },
   { id: 'dashboard',      label: 'Dashboard',      icon: '📊' },
   { id: 'empresas',       label: 'Empresas',       icon: '🏢' },
   { id: 'alertas',        label: 'Alertas',        icon: '⚠️'  },
@@ -108,6 +110,9 @@ export default function App() {
     }
     if (activeModule === 'alertas' && !demoMode) {
       return <Alertas />
+    }
+    if (activeModule === 'agenda' && !demoMode) {
+      return <Agenda />
     }
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />

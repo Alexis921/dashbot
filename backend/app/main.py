@@ -18,13 +18,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
-from app.database import get_db, init_db, User, Empresa, Notification, SyncLog, Programacion, Configuracion
+from datetime import date
+from app.database import (
+    get_db, init_db, User, Empresa, Notification, SyncLog,
+    Programacion, Configuracion, Obligacion,
+)
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
     encrypt_secret, decrypt_secret,
 )
 from app.ruc_lookup import lookup_ruc
 from app.cronograma import get_vencimientos
+from app.obligaciones import (
+    generar_desde_cronograma, obligacion_dict, ESTADOS, ESTADOS_LABEL,
+)
 from app.scraper import get_demo_notifications
 from app.playwright_scraper import scrape_with_playwright, download_pdf_with_cookies
 from app.email_service import send_email_summary
@@ -101,6 +108,28 @@ class ConfiguracionUpdate(BaseModel):
 class TestWhatsappRequest(BaseModel):
     whatsapp_numero: str
     whatsapp_apikey: str
+
+
+class ObligacionCreate(BaseModel):
+    empresa_id: Optional[int] = None
+    tipo: str = "otro"
+    titulo: str
+    descripcion: Optional[str] = ""
+    periodo: Optional[str] = ""
+    fecha_vencimiento: str          # "YYYY-MM-DD"
+    prioridad: str = "media"
+    responsable: Optional[str] = ""
+    monto: Optional[str] = ""
+
+
+class ObligacionUpdate(BaseModel):
+    estado: Optional[str] = None
+    prioridad: Optional[str] = None
+    titulo: Optional[str] = None
+    descripcion: Optional[str] = None
+    responsable: Optional[str] = None
+    monto: Optional[str] = None
+    fecha_vencimiento: Optional[str] = None
 
 
 # ── Startup ────────────────────────────────────────────────────────────────
@@ -405,6 +434,129 @@ async def empresa_vencimientos(
     data["ruc"] = empresa.ruc
     data["razon_social"] = empresa.razon_social
     return data
+
+
+# ── Agenda Tributaria: Obligaciones ──────────────────────────────────────────
+def _empresa_nombre_map(user: User, db: Session) -> dict:
+    return {
+        e.id: (e.alias or e.razon_social or f"RUC {e.ruc}")
+        for e in db.query(Empresa).filter(Empresa.user_id == user.id).all()
+    }
+
+
+@app.get("/api/obligaciones")
+async def list_obligaciones(
+    empresa_id: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Obligacion).filter(Obligacion.user_id == user.id)
+    if empresa_id:
+        q = q.filter(Obligacion.empresa_id == empresa_id)
+    obligaciones = q.order_by(Obligacion.fecha_vencimiento).all()
+    nombres = _empresa_nombre_map(user, db)
+    return {
+        "obligaciones": [obligacion_dict(o, nombres.get(o.empresa_id, "")) for o in obligaciones],
+        "estados": [{"key": k, "label": ESTADOS_LABEL[k]} for k in ESTADOS],
+    }
+
+
+@app.post("/api/empresas/{empresa_id}/obligaciones/generar")
+async def generar_obligaciones(
+    empresa_id: int,
+    year: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    anio = year or datetime.utcnow().year
+    return await generar_desde_cronograma(empresa, anio, db)
+
+
+@app.post("/api/obligaciones")
+async def create_obligacion(
+    req: ObligacionCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not req.titulo.strip():
+        raise HTTPException(400, "El título es obligatorio.")
+    try:
+        fv = datetime.fromisoformat(req.fecha_vencimiento)
+    except Exception:
+        raise HTTPException(400, "Fecha de vencimiento inválida (use YYYY-MM-DD).")
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+
+    o = Obligacion(
+        user_id=user.id, empresa_id=req.empresa_id, clave=f"man-{uuid.uuid4().hex[:16]}",
+        tipo=req.tipo, titulo=req.titulo.strip(), descripcion=(req.descripcion or "").strip(),
+        periodo=(req.periodo or "").strip(), fecha_vencimiento=fv,
+        estado="pendiente", prioridad=req.prioridad if req.prioridad in ("alta", "media", "baja") else "media",
+        responsable=(req.responsable or "").strip(), monto=(req.monto or "").strip(),
+        origen="manual",
+    )
+    db.add(o)
+    db.commit()
+    db.refresh(o)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "obligacion": obligacion_dict(o, nombres.get(o.empresa_id, ""))}
+
+
+@app.patch("/api/obligaciones/{obligacion_id}")
+async def update_obligacion(
+    obligacion_id: int,
+    req: ObligacionUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = db.query(Obligacion).filter(
+        Obligacion.id == obligacion_id, Obligacion.user_id == user.id
+    ).first()
+    if not o:
+        raise HTTPException(404, "Obligación no encontrada.")
+
+    if req.estado is not None:
+        if req.estado not in ESTADOS:
+            raise HTTPException(400, "Estado inválido.")
+        o.estado = req.estado
+        o.completed_at = datetime.utcnow() if req.estado in ("pagado", "declarado", "archivado") else None
+    if req.prioridad is not None and req.prioridad in ("alta", "media", "baja"):
+        o.prioridad = req.prioridad
+    if req.titulo is not None:
+        o.titulo = req.titulo.strip()
+    if req.descripcion is not None:
+        o.descripcion = req.descripcion.strip()
+    if req.responsable is not None:
+        o.responsable = req.responsable.strip()
+    if req.monto is not None:
+        o.monto = req.monto.strip()
+    if req.fecha_vencimiento:
+        try:
+            o.fecha_vencimiento = datetime.fromisoformat(req.fecha_vencimiento)
+        except Exception:
+            raise HTTPException(400, "Fecha inválida.")
+    o.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(o)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "obligacion": obligacion_dict(o, nombres.get(o.empresa_id, ""))}
+
+
+@app.delete("/api/obligaciones/{obligacion_id}")
+async def delete_obligacion(
+    obligacion_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = db.query(Obligacion).filter(
+        Obligacion.id == obligacion_id, Obligacion.user_id == user.id
+    ).first()
+    if not o:
+        raise HTTPException(404, "Obligación no encontrada.")
+    db.delete(o)
+    db.commit()
+    return {"success": True}
 
 
 @app.get("/api/empresas/{empresa_id}/notifications")

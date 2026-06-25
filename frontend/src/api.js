@@ -110,6 +110,29 @@ export async function apiDownloadPdf(empresaId, notifId, filename) {
   URL.revokeObjectURL(url)
 }
 
+// ── Agenda Tributaria: Obligaciones ────────────────────────
+export async function apiListObligaciones(empresaId = 0) {
+  const q = empresaId ? `?empresa_id=${empresaId}` : ''
+  return req(`/api/obligaciones${q}`)
+}
+
+export async function apiGenerarObligaciones(empresaId, year) {
+  const q = year ? `?year=${year}` : ''
+  return req(`/api/empresas/${empresaId}/obligaciones/generar${q}`, { method: 'POST' })
+}
+
+export async function apiCreateObligacion(data) {
+  return req('/api/obligaciones', { method: 'POST', body: data })
+}
+
+export async function apiUpdateObligacion(id, data) {
+  return req(`/api/obligaciones/${id}`, { method: 'PATCH', body: data })
+}
+
+export async function apiDeleteObligacion(id) {
+  return req(`/api/obligaciones/${id}`, { method: 'DELETE' })
+}
+
 // ── Programación ───────────────────────────────────────────
 export async function apiGetProgramacion() {
   return req('/api/programacion')
