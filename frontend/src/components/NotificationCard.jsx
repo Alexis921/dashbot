@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { apiInterpretNotification, apiDownloadPdf } from '../api'
+import { apiInterpret, apiDownloadPdf } from '../api'
 
 function formatDate(iso) {
   if (!iso) return ''
@@ -10,7 +10,7 @@ function formatDate(iso) {
   } catch { return iso.slice(0, 10) }
 }
 
-export default function NotificationCard({ notif, onMarkRead, sessionId }) {
+export default function NotificationCard({ notif, onMarkRead, empresaId, demoMode = false }) {
   const [expanded, setExpanded] = useState(false)
   const [interpretation, setInterpretation] = useState(null)
   const [loadingAI, setLoadingAI] = useState(false)
@@ -24,10 +24,14 @@ export default function NotificationCard({ notif, onMarkRead, sessionId }) {
   async function handleInterpret(e) {
     e.stopPropagation()
     if (interpretation) { setInterpretation(null); return }
+    if (demoMode) {
+      setAiError('El análisis con IA está disponible al registrar una empresa real.')
+      return
+    }
     setLoadingAI(true)
     setAiError(null)
     try {
-      const data = await apiInterpretNotification(sessionId, notif)
+      const data = await apiInterpret(notif)
       setInterpretation(data.interpretation)
     } catch (err) {
       setAiError(err.message)
@@ -38,9 +42,13 @@ export default function NotificationCard({ notif, onMarkRead, sessionId }) {
 
   async function handleDownloadPdf(e) {
     e.stopPropagation()
+    if (demoMode) {
+      alert('⚠️ La descarga de PDF está disponible al registrar una empresa real.')
+      return
+    }
     setLoadingPdf(true)
     try {
-      await apiDownloadPdf(sessionId, notif.id, notif.attachment_name)
+      await apiDownloadPdf(empresaId, notif.id, notif.attachment_name)
     } catch (err) {
       alert(`⚠️ ${err.message}`)
     } finally {

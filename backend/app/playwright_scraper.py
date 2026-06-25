@@ -209,6 +209,18 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
             except Exception:
                 pass
 
+        # Capturar la razón social desde el header "Bienvenido, EMPRESA"
+        razon_social = ""
+        try:
+            for fr in page.frames:
+                t = await fr.inner_text("body")
+                m = re.search(r"Bienvenid[oa],?\s*([A-ZÁÉÍÓÚÑ0-9][^\n<]{3,120})", t)
+                if m:
+                    razon_social = m.group(1).strip().rstrip(".·-").strip()
+                    break
+        except Exception:
+            pass
+
         # ── 6. Click "Buzón Electrónico" ──────────────────────────────────
         buzon = page
         try:
@@ -260,8 +272,13 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
                 except Exception:
                     pass
             if "listamensajes" in txt or "no tiene" in txt or "bandeja" in txt:
+                try:
+                    cookies = await ctx.cookies()
+                except Exception:
+                    cookies = []
                 return {"success": True, "notifications": [], "error": None,
-                        "note": "Buzón sin notificaciones."}
+                        "note": "Buzón sin notificaciones.", "cookies": cookies,
+                        "buzon_url": buzon.url, "razon_social": razon_social}
             return {"success": False, "notifications": [],
                     "error": f"Buzón abierto pero sin lista de mensajes. URL: {buzon.url}",
                     "error_type": "buzon_empty"}
@@ -273,7 +290,8 @@ async def _login_and_scrape(ctx, page, ruc, usuario, password) -> dict:
         except Exception:
             cookies = []
         return {"success": True, "notifications": notifications, "error": None,
-                "cookies": cookies, "buzon_url": buzon.url}
+                "cookies": cookies, "buzon_url": buzon.url,
+                "razon_social": razon_social}
 
     except PWTimeout as e:
         return {"success": False, "notifications": [],

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import LoginForm from './components/LoginForm'
 import ChatInterface from './components/ChatInterface'
-import { apiLogout } from './api'
+import Empresas from './components/Empresas'
+import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
   { id: 'notificaciones', label: 'Notificaciones', icon: '🔔' },
@@ -26,25 +27,86 @@ function ComingSoon({ title, icon }) {
   )
 }
 
-export default function App() {
-  const [session, setSession] = useState(null)
-  const [activeModule, setActiveModule] = useState('notificaciones')
+function NoEmpresaSelected({ onGoEmpresas }) {
+  return (
+    <div className="coming-soon">
+      <div className="coming-soon-icon">🏢</div>
+      <h2>Selecciona una empresa</h2>
+      <p>Para ver las notificaciones del buzón SUNAT, primero elige una empresa desde el módulo Empresas y haz clic en “Extraer”.</p>
+      <button className="btn-accent" style={{ marginTop: 16 }} onClick={onGoEmpresas}>🏢 Ir a Empresas</button>
+    </div>
+  )
+}
 
-  async function handleLogout() {
-    if (session?.session_id) {
-      try { await apiLogout(session.session_id) } catch (_) {}
-    }
-    setSession(null)
+export default function App() {
+  const [user, setUser] = useState(null)
+  const [demoMode, setDemoMode] = useState(false)
+  const [booting, setBooting] = useState(true)
+  const [activeModule, setActiveModule] = useState('empresas')
+  const [selectedEmpresa, setSelectedEmpresa] = useState(null)
+
+  // Restaurar sesión desde el token guardado
+  useEffect(() => {
+    const token = getToken()
+    if (!token) { setBooting(false); return }
+    apiMe()
+      .then((data) => { setUser(data.user); setActiveModule('empresas') })
+      .catch(() => clearToken())
+      .finally(() => setBooting(false))
+  }, [])
+
+  function handleAuth(u) {
+    setUser(u)
+    setDemoMode(false)
+    setActiveModule('empresas')
   }
 
-  if (!session) return <LoginForm onLogin={setSession} />
+  function handleDemo() {
+    setDemoMode(true)
+    setActiveModule('notificaciones')
+  }
 
-  const initials = session.ruc ? session.ruc.slice(-4) : 'RUC'
+  function handleLogout() {
+    clearToken()
+    setUser(null)
+    setDemoMode(false)
+    setSelectedEmpresa(null)
+    setActiveModule('empresas')
+  }
+
+  function openEmpresa(empresa) {
+    setSelectedEmpresa(empresa)
+    setActiveModule('notificaciones')
+  }
+
+  if (booting) {
+    return <div className="login-screen" style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ color: '#1B3A6B', fontWeight: 600 }}>Cargando Dashbot...</div>
+    </div>
+  }
+
+  if (!user && !demoMode) {
+    return <LoginForm onAuth={handleAuth} onDemo={handleDemo} />
+  }
+
   const activeItem = MENU.find(m => m.id === activeModule)
+  const displayName = demoMode ? 'Modo Demo' : `${user.nombre} ${user.apellido}`.trim() || user.username
+  const initials = demoMode ? 'D' : (user.nombre?.[0] || user.username[0] || 'U').toUpperCase()
+
+  function renderModule() {
+    if (activeModule === 'empresas' && !demoMode) {
+      return <Empresas onOpenEmpresa={openEmpresa} />
+    }
+    if (activeModule === 'notificaciones') {
+      if (demoMode) return <ChatInterface demoMode key="demo" />
+      if (selectedEmpresa) return <ChatInterface empresa={selectedEmpresa} key={selectedEmpresa.id} />
+      return <NoEmpresaSelected onGoEmpresas={() => setActiveModule('empresas')} />
+    }
+    return <ComingSoon title={activeItem?.label} icon={activeItem?.icon} />
+  }
 
   return (
     <div className="app-shell">
-      {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-logo">
           <div className="sidebar-logo-row">
@@ -73,27 +135,24 @@ export default function App() {
         <div className="sidebar-user">
           <div className="sidebar-avatar">{initials}</div>
           <div className="sidebar-user-info">
-            <div className="sidebar-user-name">RUC {session.ruc}</div>
-            <div className="sidebar-user-ruc">{session.demo ? 'Modo demo' : 'Sesión activa'}</div>
+            <div className="sidebar-user-name">{displayName}</div>
+            <div className="sidebar-user-ruc">{demoMode ? 'Demo' : 'Sesión activa'}</div>
           </div>
           <button className="sidebar-logout" onClick={handleLogout} title="Cerrar sesión">↪</button>
         </div>
       </aside>
 
-      {/* Contenido principal */}
       <div className="main-content">
         <div className="main-topbar">
           <span className="topbar-title">{activeItem?.icon} {activeItem?.label}</span>
-          {session.demo && <span className="topbar-badge-demo">DEMO</span>}
+          {demoMode && <span className="topbar-badge-demo">DEMO</span>}
+          {selectedEmpresa && activeModule === 'notificaciones' && (
+            <span className="topbar-empresa">{selectedEmpresa.alias || selectedEmpresa.razon_social || `RUC ${selectedEmpresa.ruc}`}</span>
+          )}
           <div className="sync-dot" title="Conectado" />
-          <span className="topbar-ruc">RUC {session.ruc}</span>
         </div>
 
-        {activeModule === 'notificaciones' ? (
-          <ChatInterface session={session} onLogout={handleLogout} />
-        ) : (
-          <ComingSoon title={activeItem?.label} icon={activeItem?.icon} />
-        )}
+        {renderModule()}
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import NotificationCard from './NotificationCard'
-import { apiSync, apiSendEmail, apiMarkRead } from '../api'
+import { apiSyncEmpresa, apiDemoSync, apiSendEmail } from '../api'
 
 function now() {
   return new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
@@ -54,7 +54,7 @@ function SummaryCard({ summary, notifications, onSendEmail }) {
       </div>
       <div className="summary-text" style={{ marginTop: 12 }}>{summary}</div>
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <button className="btn-quick" style={{ borderColor: '#c8102e', color: '#c8102e' }} onClick={onSendEmail}>
+        <button className="btn-quick" style={{ borderColor: '#00A651', color: '#00A651' }} onClick={onSendEmail}>
           📧 Enviar resumen por correo
         </button>
       </div>
@@ -84,7 +84,8 @@ function EmailModal({ onClose, onSend, loading }) {
   )
 }
 
-export default function ChatInterface({ session, onLogout }) {
+export default function ChatInterface({ empresa, demoMode = false }) {
+  const empresaId = empresa?.id
   const [messages, setMessages] = useState([])
   const [notifications, setNotifications] = useState([])
   const [input, setInput] = useState('')
@@ -97,21 +98,24 @@ export default function ChatInterface({ session, onLogout }) {
   const addBot = useCallback((content) => {
     setMessages((m) => [...m, { id: Date.now() + Math.random(), role: 'bot', content, time: now() }])
   }, [])
-
   const addUser = useCallback((text) => {
     setMessages((m) => [...m, { id: Date.now(), role: 'user', text, time: now() }])
   }, [])
 
   useEffect(() => {
+    const label = demoMode ? 'datos de demostración'
+      : (empresa?.alias || empresa?.razon_social || `RUC ${empresa?.ruc}`)
     addBot(
       <span>
         ¡Hola! Soy <strong>Dashbot</strong> 👋<br />
-        Conectado con RUC <strong>{session.ruc}</strong>.
-        {session.demo && <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700, marginLeft: 6 }}>DEMO</span>}<br /><br />
-        Sincronizando tu buzón SUNAT...
+        {demoMode
+          ? <>Estás viendo el <strong>modo demo</strong>.</>
+          : <>Conectando con <strong>{label}</strong>.</>}
+        <br /><br />Sincronizando buzón SUNAT...
       </span>
     )
     handleSync()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -123,59 +127,37 @@ export default function ChatInterface({ session, onLogout }) {
     setSyncing(true)
     setTyping(true)
     try {
-      const data = await apiSync(session.session_id)
+      const data = demoMode ? await apiDemoSync() : await apiSyncEmpresa(empresaId)
       setTyping(false)
 
-      // Error de conexión real a SUNAT
       if (!data.success && data.error) {
         const isCredErr = data.error_type === 'credenciales'
+        const isCaptcha = data.error_type === 'captcha' || data.error_type === 'login_incomplete'
         addBot(
           <div style={{ background: '#fff0f0', border: '1px solid #fca5a5', borderLeft: '4px solid #d92d20', borderRadius: 10, padding: '14px 16px' }}>
             <div style={{ fontWeight: 700, color: '#b91c1c', marginBottom: 8 }}>
-              {isCredErr ? '🔐 Credenciales incorrectas' : '⚠️ No se pudo conectar a SUNAT'}
+              {isCredErr ? '🔐 Credenciales incorrectas' : isCaptcha ? '🤖 SUNAT pide verificación' : '⚠️ No se pudo conectar a SUNAT'}
             </div>
-            <div style={{ fontSize: 13, color: '#7f1d1d', lineHeight: 1.6, marginBottom: 12 }}>
-              {data.error}
-            </div>
-            {!isCredErr && (
-              <div style={{ fontSize: 12, color: '#9a3412', background: '#fff7ed', borderRadius: 6, padding: '8px 12px' }}>
-                💡 <strong>¿Por qué ocurre esto?</strong> El portal SOL de SUNAT usa JavaScript y protecciones anti-bot que bloquean el acceso directo.
-                Estamos trabajando en una solución con navegador automatizado (Playwright).
-                <br/><br/>
-                Puedes usar el <strong>modo demo</strong> para ver cómo funciona el sistema mientras tanto.
-              </div>
-            )}
-            {isCredErr && (
-              <div style={{ fontSize: 12, color: '#1e40af', background: '#eff6ff', borderRadius: 6, padding: '8px 12px' }}>
-                💡 Verifica tu RUC, usuario SOL y contraseña. La contraseña SOL es diferente a la clave SUNAT.
-              </div>
-            )}
+            <div style={{ fontSize: 13, color: '#7f1d1d', lineHeight: 1.6 }}>{data.error}</div>
           </div>
         )
         return
       }
 
       setNotifications(data.notifications || [])
-
-      addBot(
-        <SummaryCard
-          summary={data.ai_summary}
-          notifications={data.notifications || []}
-          onSendEmail={() => setShowEmailModal(true)}
-        />
-      )
+      addBot(<SummaryCard summary={data.ai_summary} notifications={data.notifications || []} onSendEmail={() => setShowEmailModal(true)} />)
 
       if ((data.notifications || []).length > 0) {
         addBot(
           <div>
-            <p style={{ marginBottom: 10, fontWeight: 600, color: '#0d1b3e' }}>
-              📬 {data.new_count > 0 ? `${data.new_count} nueva(s) notificación(es) del buzón SUNAT:` : 'Notificaciones sincronizadas:'}
+            <p style={{ marginBottom: 10, fontWeight: 600, color: '#1B3A6B' }}>
+              📬 {data.new_count > 0 ? `${data.new_count} nueva(s) notificación(es):` : 'Notificaciones sincronizadas:'}
             </p>
             <div className="notif-list">
               {[...(data.notifications || [])]
                 .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
                 .map((n) => (
-                  <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} sessionId={session.session_id} />
+                  <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} empresaId={empresaId} demoMode={demoMode} />
                 ))}
             </div>
           </div>
@@ -183,7 +165,6 @@ export default function ChatInterface({ session, onLogout }) {
       } else {
         addBot('✅ No hay notificaciones nuevas en el buzón SUNAT.')
       }
-
       addBot(`🕐 Última sincronización: ${new Date().toLocaleString('es-PE')}`)
     } catch (err) {
       setTyping(false)
@@ -193,16 +174,20 @@ export default function ChatInterface({ session, onLogout }) {
     }
   }
 
-  async function handleMarkRead(notifId) {
-    await apiMarkRead(session.session_id, [notifId])
+  function handleMarkRead(notifId) {
     setNotifications((prev) => prev.map((n) => n.id === notifId ? { ...n, status: 'leido' } : n))
     addBot('✓ Notificación marcada como leída.')
   }
 
   async function handleSendEmail(email) {
+    if (demoMode) {
+      addBot('ℹ️ El envío de correo está disponible al registrar una empresa real.')
+      setShowEmailModal(false)
+      return
+    }
     setEmailLoading(true)
     try {
-      await apiSendEmail(session.session_id, email)
+      await apiSendEmail(empresaId, email)
       setShowEmailModal(false)
       addBot(`✅ Resumen enviado exitosamente a ${email}`)
     } catch (err) {
@@ -220,17 +205,14 @@ export default function ChatInterface({ session, onLogout }) {
       addUser(text)
       const u = notifications.filter((n) => n.is_urgent)
       if (!u.length) addBot('✅ No tienes notificaciones urgentes en este momento.')
-      else addBot(<div><p style={{ marginBottom: 8, fontWeight: 600, color: '#c8102e' }}>🔴 {u.length} urgente(s):</p><div className="notif-list">{u.map((n) => <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} sessionId={session.session_id} />)}</div></div>)
+      else addBot(<div><p style={{ marginBottom: 8, fontWeight: 600, color: '#dc3545' }}>🔴 {u.length} urgente(s):</p><div className="notif-list">{u.map((n) => <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} empresaId={empresaId} demoMode={demoMode} />)}</div></div>)
     } else if (t.includes('correo') || t.includes('email') || t.includes('enviar')) {
       addUser(text); setShowEmailModal(true)
-    } else if (t.includes('resumen') || t.includes('total') || t.includes('cuántas')) {
+    } else if (t.includes('resumen') || t.includes('total') || t.includes('cuánt')) {
       addUser(text)
       const urgent = notifications.filter((n) => n.is_urgent).length
       const nuevo = notifications.filter((n) => n.status === 'nuevo').length
-      addBot(<div>📊 <strong style={{ color: '#0d1b3e' }}>Estado del buzón SUNAT — RUC {session.ruc}</strong><br /><br />🔴 Urgentes: <strong>{urgent}</strong><br />📬 Sin leer: <strong>{nuevo}</strong><br />📋 Total: <strong>{notifications.length}</strong></div>)
-    } else if (t.includes('hola') || t.includes('ayuda')) {
-      addUser(text)
-      addBot(<span>Puedo ayudarte con:<br /><br />🔄 <strong>Sincronizar</strong> — Actualizar notificaciones SUNAT<br />🔴 <strong>Urgentes</strong> — Solo las prioritarias<br />📊 <strong>Resumen</strong> — Estado general<br />📧 <strong>Enviar correo</strong> — Resumen por email</span>)
+      addBot(<div>📊 <strong style={{ color: '#1B3A6B' }}>Estado del buzón SUNAT</strong><br /><br />🔴 Urgentes: <strong>{urgent}</strong><br />📬 Sin leer: <strong>{nuevo}</strong><br />📋 Total: <strong>{notifications.length}</strong></div>)
     } else {
       addUser(text)
       addBot('Prueba: sincronizar, urgentes, resumen o enviar correo.')

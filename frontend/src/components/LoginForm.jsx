@@ -1,32 +1,48 @@
 import { useState } from 'react'
-import { apiLogin } from '../api'
+import { apiLogin, apiRegister } from '../api'
 
-export default function LoginForm({ onLogin }) {
-  const [form, setForm] = useState({ ruc: '', usuario: '', password: '' })
+export default function LoginForm({ onAuth, onDemo }) {
+  const [mode, setMode] = useState('login') // 'login' | 'register'
+  const [login, setLogin] = useState({ username: '', password: '' })
+  const [reg, setReg] = useState({
+    nombre: '', apellido: '', username: '', password: '', confirm: '',
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const setL = (k) => (e) => setLogin((f) => ({ ...f, [k]: e.target.value }))
+  const setR = (k) => (e) => setReg((f) => ({ ...f, [k]: e.target.value }))
 
-  async function handleSubmit(e, demoMode = false) {
+  async function handleLogin(e) {
     e.preventDefault()
     setError('')
-
-    if (!demoMode) {
-      if (form.ruc.length !== 11 || !/^\d+$/.test(form.ruc))
-        return setError('El RUC debe tener exactamente 11 dígitos numéricos.')
-      if (!form.usuario.trim()) return setError('Ingresa tu usuario SOL.')
-      if (!form.password.trim()) return setError('Ingresa tu contraseña SOL.')
-    }
-
+    if (!login.username.trim()) return setError('Ingresa tu nombre de usuario.')
+    if (!login.password) return setError('Ingresa tu contraseña.')
     setLoading(true)
     try {
-      const payload = demoMode
-        ? { ruc: '20603448308', usuario: 'OLINKYLA', password: 'demo', demo_mode: true }
-        : { ...form, demo_mode: false }
+      const data = await apiLogin(login.username.trim(), login.password)
+      onAuth(data.user)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
-      const data = await apiLogin(payload.ruc, payload.usuario, payload.password, payload.demo_mode)
-      onLogin({ ...data, ruc: payload.ruc, demo: demoMode })
+  async function handleRegister(e) {
+    e.preventDefault()
+    setError('')
+    if (!reg.nombre.trim() || !reg.apellido.trim()) return setError('Ingresa tu nombre y apellido.')
+    if (reg.username.trim().length < 3) return setError('El usuario debe tener al menos 3 caracteres.')
+    if (reg.password.length < 6) return setError('La contraseña debe tener al menos 6 caracteres.')
+    if (reg.password !== reg.confirm) return setError('Las contraseñas no coinciden.')
+    setLoading(true)
+    try {
+      const data = await apiRegister({
+        nombre: reg.nombre.trim(), apellido: reg.apellido.trim(),
+        username: reg.username.trim(), password: reg.password,
+      })
+      onAuth(data.user)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -50,87 +66,101 @@ export default function LoginForm({ onLogin }) {
             Gestiona el buzón SUNAT de tus clientes <span>sin complicaciones.</span>
           </div>
           <div className="login-left-desc">
-            Plataforma para contadores y estudios contables. Monitoreo automático de notificaciones tributarias.
+            Plataforma multiempresa para contadores y estudios contables. Monitoreo automático de notificaciones tributarias.
           </div>
           <div className="login-left-features">
-            <div className="login-left-feature">
-              <div className="login-left-feature-dot">✓</div>
-              <span>Monitoreo automático del buzón SUNAT SOL</span>
-            </div>
-            <div className="login-left-feature">
-              <div className="login-left-feature-dot">✓</div>
-              <span>Alertas de multas, cobranzas y esquelas</span>
-            </div>
-            <div className="login-left-feature">
-              <div className="login-left-feature-dot">✓</div>
-              <span>Resumen ejecutivo con inteligencia artificial</span>
-            </div>
+            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Registra todas tus empresas en un solo lugar</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Alertas de multas, cobranzas y esquelas</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Resumen ejecutivo con inteligencia artificial</span></div>
           </div>
         </div>
 
         <div className="login-left-stats">
-          <div>
-            <div className="login-stat-val">500+</div>
-            <div className="login-stat-lbl">Contadores</div>
-          </div>
-          <div>
-            <div className="login-stat-val">12k+</div>
-            <div className="login-stat-lbl">Alertas</div>
-          </div>
-          <div>
-            <div className="login-stat-val">99.9%</div>
-            <div className="login-stat-lbl">Uptime</div>
-          </div>
+          <div><div className="login-stat-val">500+</div><div className="login-stat-lbl">Contadores</div></div>
+          <div><div className="login-stat-val">12k+</div><div className="login-stat-lbl">Alertas</div></div>
+          <div><div className="login-stat-val">99.9%</div><div className="login-stat-lbl">Uptime</div></div>
         </div>
       </div>
 
       <div className="login-right">
         <div className="login-card">
-          <div className="login-card-title">Bienvenido de vuelta</div>
-          <div className="login-card-sub">Ingresa a tu cuenta para continuar.</div>
+          {mode === 'login' ? (
+            <>
+              <div className="login-card-title">Bienvenido de vuelta</div>
+              <div className="login-card-sub">Ingresa a tu cuenta para continuar.</div>
 
-          {error && <div className="error-msg">⚠️ {error}</div>}
+              {error && <div className="error-msg">⚠️ {error}</div>}
 
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label className="form-label">RUC (11 dígitos)</label>
-              <input
-                className={`form-input ${error && form.ruc.length !== 11 ? 'error' : ''}`}
-                type="text" maxLength={11} value={form.ruc}
-                onChange={set('ruc')} placeholder="20123456789"
-                autoComplete="off"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Usuario SOL</label>
-              <input
-                className="form-input" type="text"
-                value={form.usuario} onChange={set('usuario')}
-                placeholder="Tu usuario SOL" autoComplete="username"
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Contraseña SOL</label>
-              <input
-                className="form-input" type="password"
-                value={form.password} onChange={set('password')}
-                placeholder="••••••••" autoComplete="current-password"
-              />
-            </div>
-            <button className="btn-primary" type="submit" disabled={loading}>
-              {loading ? '⏳ Conectando...' : '🔐 Ingresar'}
-            </button>
-          </form>
+              <form onSubmit={handleLogin}>
+                <div className="form-group">
+                  <label className="form-label">Nombre de usuario</label>
+                  <input className="form-input" type="text" value={login.username}
+                    onChange={setL('username')} placeholder="tu_usuario" autoComplete="username" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Contraseña</label>
+                  <input className="form-input" type="password" value={login.password}
+                    onChange={setL('password')} placeholder="••••••••" autoComplete="current-password" />
+                </div>
+                <button className="btn-primary" type="submit" disabled={loading}>
+                  {loading ? '⏳ Ingresando...' : '🔐 Iniciar sesión'}
+                </button>
+              </form>
 
-          <div className="divider">o</div>
-          <button
-            className="btn-primary"
-            style={{ background: 'linear-gradient(135deg,#1B3A6B,#0f2347)' }}
-            onClick={(e) => handleSubmit(e, true)}
-            disabled={loading}
-          >
-            🧪 Probar con datos de demostración
-          </button>
+              <button className="btn-secondary-full" onClick={() => { setError(''); setMode('register') }} disabled={loading}>
+                ✍️ Crear cuenta nueva
+              </button>
+
+              <div className="divider">o</div>
+              <button className="btn-demo-full" onClick={onDemo} disabled={loading}>
+                🧪 Usar demo
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="login-card-title">Crea tu cuenta</div>
+              <div className="login-card-sub">Regístrate para empezar a gestionar tus empresas.</div>
+
+              {error && <div className="error-msg">⚠️ {error}</div>}
+
+              <form onSubmit={handleRegister}>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Nombre</label>
+                    <input className="form-input" type="text" value={reg.nombre}
+                      onChange={setR('nombre')} placeholder="Juan" />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Apellido</label>
+                    <input className="form-input" type="text" value={reg.apellido}
+                      onChange={setR('apellido')} placeholder="Pérez" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Nombre de usuario</label>
+                  <input className="form-input" type="text" value={reg.username}
+                    onChange={setR('username')} placeholder="juanperez" autoComplete="username" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Contraseña</label>
+                  <input className="form-input" type="password" value={reg.password}
+                    onChange={setR('password')} placeholder="Mínimo 6 caracteres" autoComplete="new-password" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirmar contraseña</label>
+                  <input className="form-input" type="password" value={reg.confirm}
+                    onChange={setR('confirm')} placeholder="Repite tu contraseña" autoComplete="new-password" />
+                </div>
+                <button className="btn-primary" type="submit" disabled={loading}>
+                  {loading ? '⏳ Registrando...' : '✅ Registrarse'}
+                </button>
+              </form>
+
+              <button className="btn-secondary-full" onClick={() => { setError(''); setMode('login') }} disabled={loading}>
+                ← Ya tengo cuenta
+              </button>
+            </>
+          )}
 
           <a href="/landing" className="back-home">← Volver a la página principal</a>
         </div>

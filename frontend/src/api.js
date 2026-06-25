@@ -1,66 +1,93 @@
-// En desarrollo: proxy a localhost:8000
-// En producción: VITE_API_URL apunta al backend de Railway
+// API client Dashbot — autenticación JWT + multiempresa
 const BASE = import.meta.env.VITE_API_URL || ''
 
-export async function apiLogin(ruc, usuario, password, demo_mode = false) {
-  const res = await fetch(`${BASE}/api/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ruc, usuario, password, demo_mode }),
+const TOKEN_KEY = 'dashbot_token'
+export function getToken() { return localStorage.getItem(TOKEN_KEY) }
+export function setToken(t) { localStorage.setItem(TOKEN_KEY, t) }
+export function clearToken() { localStorage.removeItem(TOKEN_KEY) }
+
+async function req(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (auth) {
+    const t = getToken()
+    if (t) headers.Authorization = `Bearer ${t}`
+  }
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.detail || 'Error de autenticación')
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Ocurrió un error')
   return data
 }
 
-export async function apiSync(session_id) {
-  const res = await fetch(`${BASE}/api/sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id }),
+// ── Autenticación ──────────────────────────────────────────
+export async function apiRegister({ nombre, apellido, username, password }) {
+  const data = await req('/api/auth/register', {
+    method: 'POST', auth: false,
+    body: { nombre, apellido, username, password },
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.detail || 'Error al sincronizar')
+  setToken(data.token)
   return data
 }
 
-export async function apiSendEmail(session_id, to_email) {
-  const res = await fetch(`${BASE}/api/send-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id, to_email }),
+export async function apiLogin(username, password) {
+  const data = await req('/api/auth/login', {
+    method: 'POST', auth: false,
+    body: { username, password },
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.detail || 'Error al enviar correo')
+  setToken(data.token)
   return data
 }
 
-export async function apiMarkRead(session_id, notification_ids) {
-  const res = await fetch(`${BASE}/api/mark-read`, {
+export async function apiMe() {
+  return req('/api/auth/me')
+}
+
+// ── Empresas ───────────────────────────────────────────────
+export async function apiListEmpresas() {
+  return req('/api/empresas')
+}
+
+export async function apiLookupRuc(ruc) {
+  return req(`/api/ruc/${ruc}`)
+}
+
+export async function apiCreateEmpresa({ ruc, razon_social, alias, sol_usuario, sol_password }) {
+  return req('/api/empresas', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id, notification_ids }),
+    body: { ruc, razon_social, alias, sol_usuario, sol_password },
   })
-  return res.json()
 }
 
-export async function apiLogout(session_id) {
-  await fetch(`${BASE}/api/session/${session_id}`, { method: 'DELETE' })
+export async function apiDeleteEmpresa(id) {
+  return req(`/api/empresas/${id}`, { method: 'DELETE' })
 }
 
-export async function apiInterpretNotification(session_id, notification) {
-  const res = await fetch(`${BASE}/api/interpret`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id, notification }),
+export async function apiSyncEmpresa(id) {
+  return req(`/api/empresas/${id}/sync`, { method: 'POST' })
+}
+
+export async function apiEmpresaNotifications(id) {
+  return req(`/api/empresas/${id}/notifications`)
+}
+
+export async function apiSendEmail(empresaId, to_email) {
+  return req(`/api/empresas/${empresaId}/send-email`, {
+    method: 'POST', body: { to_email },
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.detail || 'Error al interpretar')
-  return data
 }
 
-export async function apiDownloadPdf(session_id, notif_id, filename) {
-  const res = await fetch(`${BASE}/api/notifications/${notif_id}/pdf?session_id=${session_id}`)
+export async function apiInterpret(notification) {
+  return req('/api/interpret', { method: 'POST', body: { notification } })
+}
+
+export async function apiDownloadPdf(empresaId, notifId, filename) {
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/empresas/${empresaId}/notifications/${notifId}/pdf`, {
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+  })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.detail || 'No se pudo descargar el PDF')
@@ -72,4 +99,9 @@ export async function apiDownloadPdf(session_id, notif_id, filename) {
   a.download = filename || 'notificacion_sunat.pdf'
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// ── Demo ───────────────────────────────────────────────────
+export async function apiDemoSync() {
+  return req('/api/demo/sync', { method: 'POST', auth: false })
 }

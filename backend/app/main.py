@@ -1,36 +1,38 @@
 """
-BOT SUNAT - Backend API
-FastAPI + Playwright para automatizar el buzón de SUNAT
+BOT SUNAT / Dashbot - Backend API
+Plataforma multiempresa: usuarios con cuenta propia (JWT) que registran
+varias empresas con credenciales SOL cifradas.
 """
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
-import httpx
-from pydantic import BaseModel, EmailStr
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from app.database import get_db, init_db, Notification, SyncLog
-from app.scraper import scrape_sunat_notifications, get_demo_notifications
+from app.database import get_db, init_db, User, Empresa, Notification, SyncLog
+from app.auth import (
+    hash_password, verify_password, create_token, get_current_user,
+    encrypt_secret, decrypt_secret,
+)
+from app.ruc_lookup import lookup_ruc
+from app.scraper import get_demo_notifications
 from app.playwright_scraper import scrape_with_playwright, download_pdf_with_cookies
 from app.email_service import send_email_summary
-from app.ai_summary import generate_ai_summary, generate_ai_summary_expert, generate_notification_interpretation
+from app.ai_summary import (
+    generate_ai_summary_expert, generate_notification_interpretation,
+)
 
-app = FastAPI(title="BOT SUNAT", version="1.0.0")
+app = FastAPI(title="Dashbot API", version="2.0.0")
 
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "*"
-).split(",")
-
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -39,217 +41,354 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Sesiones en memoria (no persistimos credenciales en DB)
-_sessions: dict = {}
+# Cookies de sesión SUNAT en memoria, por empresa (para descargar PDFs)
+_sunat_sessions: dict = {}
 
 
-# ── Modelos Pydantic ──────────────────────────────────────────────────────────
+# ── Modelos Pydantic ──────────────────────────────────────────────────────
+class RegisterRequest(BaseModel):
+    nombre: str
+    apellido: str
+    username: str
+    password: str
+
 
 class LoginRequest(BaseModel):
-    ruc: str
-    usuario: str
+    username: str
     password: str
-    demo_mode: bool = False
 
 
-class SyncRequest(BaseModel):
-    session_id: str
-
-
-class EmailRequest(BaseModel):
-    session_id: str
-    to_email: str
-
-
-class MarkReadRequest(BaseModel):
-    session_id: str
-    notification_ids: List[str]
+class EmpresaCreate(BaseModel):
+    ruc: str
+    razon_social: Optional[str] = ""
+    alias: Optional[str] = ""
+    sol_usuario: str
+    sol_password: str
 
 
 class InterpretRequest(BaseModel):
-    session_id: str
     notification: dict
 
 
-# ── Startup ───────────────────────────────────────────────────────────────────
+class EmailRequest(BaseModel):
+    to_email: str
 
+
+# ── Startup ────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     init_db()
 
-
-# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 
-@app.post("/api/login")
-async def login(req: LoginRequest):
-    """Valida credenciales y crea sesión temporal."""
-    if len(req.ruc) != 11 or not req.ruc.isdigit():
-        raise HTTPException(400, "RUC inválido. Debe tener 11 dígitos numéricos.")
-    if not req.usuario.strip():
-        raise HTTPException(400, "Usuario requerido.")
-    if not req.password.strip():
-        raise HTTPException(400, "Contraseña requerida.")
-
-    session_id = str(uuid.uuid4())
-    _sessions[session_id] = {
-        "ruc": req.ruc,
-        "usuario": req.usuario,
-        "password": req.password,
-        "demo_mode": req.demo_mode,
-        "created_at": datetime.utcnow(),
-        "last_sync": None,
-    }
-
+# ── Autenticación ──────────────────────────────────────────────────────────
+def _user_dict(u: User) -> dict:
     return {
-        "session_id": session_id,
-        "ruc": req.ruc,
-        "message": "Sesión iniciada. Use /api/sync para obtener notificaciones.",
+        "id": u.id, "nombre": u.nombre, "apellido": u.apellido,
+        "username": u.username, "plan": u.plan, "max_empresas": u.max_empresas,
     }
 
 
-@app.post("/api/sync")
-async def sync_notifications(req: SyncRequest, db: Session = Depends(get_db)):
-    """Accede al buzón SUNAT y sincroniza notificaciones."""
-    session = _sessions.get(req.session_id)
-    if not session:
-        raise HTTPException(401, "Sesión no válida o expirada.")
+@app.post("/api/auth/register")
+async def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    username = req.username.strip().lower()
+    if len(username) < 3:
+        raise HTTPException(400, "El usuario debe tener al menos 3 caracteres.")
+    if len(req.password) < 6:
+        raise HTTPException(400, "La contraseña debe tener al menos 6 caracteres.")
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(409, "Ese nombre de usuario ya está registrado.")
 
-    ruc = session["ruc"]
+    user = User(
+        nombre=req.nombre.strip(),
+        apellido=req.apellido.strip(),
+        username=username,
+        password_hash=hash_password(req.password),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_token(user.id, user.username)
+    return {"token": token, "user": _user_dict(user)}
 
-    # Ejecutar scraper
-    if session.get("demo_mode"):
-        result = await get_demo_notifications(ruc)
-    else:
-        # 1. Intentar con Playwright (navegador real)
-        result = await scrape_with_playwright(
-            ruc, session["usuario"], session["password"]
-        )
-        # 2. Si Playwright falla, intentar con httpx como fallback
-        if not result["success"] and result.get("error_type") in ("playwright_not_installed", "browser_error"):
-            result = await scrape_sunat_notifications(
-                ruc, session["usuario"], session["password"]
-            )
 
-        if not result["success"]:
-            error_type = result.get("error_type", "sunat_no_disponible")
-            return {
-                "success": False,
-                "ruc": ruc,
-                "new_count": 0,
-                "total": 0,
-                "notifications": [],
-                "ai_summary": "",
-                "synced_at": datetime.utcnow().isoformat(),
-                "is_demo": False,
-                "error": result.get("error", "No se pudo conectar a SUNAT."),
-                "error_type": error_type,
-            }
+@app.post("/api/auth/login")
+async def login(req: LoginRequest, db: Session = Depends(get_db)):
+    username = req.username.strip().lower()
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(401, "Usuario o contraseña incorrectos.")
+    token = create_token(user.id, user.username)
+    return {"token": token, "user": _user_dict(user)}
 
-    # Guardar notificaciones en DB
+
+@app.get("/api/auth/me")
+async def me(user: User = Depends(get_current_user)):
+    return {"user": _user_dict(user)}
+
+
+# ── Consulta de RUC ─────────────────────────────────────────────────────────
+@app.get("/api/ruc/{ruc}")
+async def consulta_ruc(ruc: str, user: User = Depends(get_current_user)):
+    return await lookup_ruc(ruc)
+
+
+# ── Empresas (multiempresa) ──────────────────────────────────────────────────
+def _empresa_dict(e: Empresa) -> dict:
+    return {
+        "id": e.id, "ruc": e.ruc, "razon_social": e.razon_social,
+        "alias": e.alias, "sol_usuario": e.sol_usuario, "estado": e.estado,
+        "last_login": e.last_login.isoformat() if e.last_login else None,
+        "last_sync": e.last_sync.isoformat() if e.last_sync else None,
+    }
+
+
+@app.get("/api/empresas")
+async def list_empresas(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    empresas = db.query(Empresa).filter(Empresa.user_id == user.id).order_by(Empresa.created_at).all()
+    return {
+        "empresas": [_empresa_dict(e) for e in empresas],
+        "count": len(empresas),
+        "max": user.max_empresas,
+    }
+
+
+@app.post("/api/empresas")
+async def create_empresa(
+    req: EmpresaCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if len(req.ruc) != 11 or not req.ruc.isdigit():
+        raise HTTPException(400, "RUC inválido. Debe tener 11 dígitos.")
+    if not req.sol_usuario.strip() or not req.sol_password.strip():
+        raise HTTPException(400, "Usuario y clave SOL son obligatorios.")
+
+    count = db.query(Empresa).filter(Empresa.user_id == user.id).count()
+    if count >= user.max_empresas:
+        raise HTTPException(403, f"Alcanzaste el límite de {user.max_empresas} empresas de tu plan.")
+
+    existing = db.query(Empresa).filter(
+        Empresa.user_id == user.id, Empresa.ruc == req.ruc
+    ).first()
+    if existing:
+        raise HTTPException(409, "Ya registraste esa empresa.")
+
+    razon = (req.razon_social or "").strip()
+    if not razon:
+        info = await lookup_ruc(req.ruc)
+        if info.get("success"):
+            razon = info.get("razon_social", "")
+
+    empresa = Empresa(
+        user_id=user.id,
+        ruc=req.ruc,
+        razon_social=razon,
+        alias=(req.alias or "").strip(),
+        sol_usuario=req.sol_usuario.strip(),
+        sol_password_enc=encrypt_secret(req.sol_password),
+        estado="pendiente",
+    )
+    db.add(empresa)
+    db.commit()
+    db.refresh(empresa)
+    return {"success": True, "empresa": _empresa_dict(empresa)}
+
+
+@app.delete("/api/empresas/{empresa_id}")
+async def delete_empresa(
+    empresa_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = db.query(Empresa).filter(
+        Empresa.id == empresa_id, Empresa.user_id == user.id
+    ).first()
+    if not empresa:
+        raise HTTPException(404, "Empresa no encontrada.")
+    db.delete(empresa)
+    db.commit()
+    _sunat_sessions.pop(empresa_id, None)
+    return {"success": True}
+
+
+def _get_owned_empresa(empresa_id: int, user: User, db: Session) -> Empresa:
+    empresa = db.query(Empresa).filter(
+        Empresa.id == empresa_id, Empresa.user_id == user.id
+    ).first()
+    if not empresa:
+        raise HTTPException(404, "Empresa no encontrada.")
+    return empresa
+
+
+# ── Sincronización del buzón de una empresa ──────────────────────────────────
+@app.post("/api/empresas/{empresa_id}/sync")
+async def sync_empresa(
+    empresa_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = _get_owned_empresa(empresa_id, user, db)
+
+    try:
+        sol_password = decrypt_secret(empresa.sol_password_enc)
+    except Exception:
+        raise HTTPException(500, "No se pudo descifrar las credenciales. Re-registra la empresa.")
+
+    result = await scrape_with_playwright(empresa.ruc, empresa.sol_usuario, sol_password)
+
+    if not result.get("success"):
+        empresa.estado = "error"
+        db.commit()
+        return {
+            "success": False,
+            "empresa_id": empresa_id,
+            "error": result.get("error", "No se pudo conectar a SUNAT."),
+            "error_type": result.get("error_type", "sunat_no_disponible"),
+            "notifications": [],
+        }
+
+    # Confirmar razón social desde SUNAT si la teníamos vacía
+    if result.get("razon_social") and not empresa.razon_social:
+        empresa.razon_social = result["razon_social"][:300]
+
+    # Guardar cookies de sesión en memoria para descargar PDFs
+    _sunat_sessions[empresa_id] = {
+        "cookies": result.get("cookies", []),
+        "buzon_url": result.get("buzon_url", ""),
+        "ts": datetime.utcnow(),
+    }
+
+    # Persistir notificaciones
     new_count = 0
     for n in result["notifications"]:
         existing = db.query(Notification).filter(Notification.id == n["id"]).first()
         if not existing:
-            date_val = None
+            date_val = datetime.utcnow()
             if n.get("date_received"):
                 try:
                     date_val = datetime.fromisoformat(n["date_received"])
                 except Exception:
-                    date_val = datetime.utcnow()
-
-            notif = Notification(
-                id=n["id"],
-                ruc=ruc,
-                subject=n.get("subject", ""),
-                sender=n.get("sender", "SUNAT"),
-                date_received=date_val or datetime.utcnow(),
-                reference_number=n.get("reference_number", ""),
-                status=n.get("status", "nuevo"),
-                body_text=n.get("body_text", ""),
+                    pass
+            db.add(Notification(
+                id=n["id"], empresa_id=empresa_id, ruc=empresa.ruc,
+                subject=n.get("subject", ""), sender=n.get("sender", "SUNAT"),
+                date_received=date_val, reference_number=n.get("reference_number", ""),
+                status=n.get("status", "nuevo"), body_text=n.get("body_text", ""),
+                category=n.get("category", ""),
                 has_attachment=n.get("has_attachment", False),
                 attachment_name=n.get("attachment_name", ""),
                 is_urgent=n.get("is_urgent", False),
-            )
-            db.add(notif)
+            ))
             new_count += 1
 
-    log = SyncLog(ruc=ruc, status="ok", count_new=new_count)
-    db.add(log)
+    empresa.estado = "activa"
+    empresa.last_login = datetime.utcnow()
+    empresa.last_sync = datetime.utcnow()
+    db.add(SyncLog(ruc=empresa.ruc, empresa_id=empresa_id, status="ok", count_new=new_count))
     db.commit()
 
-    session["last_sync"] = datetime.utcnow()
-    # Guardar cookies de la sesión SUNAT para descargar PDFs sin re-loguear
-    session["sunat_cookies"] = result.get("cookies", [])
-    session["buzon_url"] = result.get("buzon_url", "")
-
-    # Generar resumen IA experto
     ai_summary = await generate_ai_summary_expert(result["notifications"])
 
     return {
         "success": True,
-        "ruc": ruc,
+        "empresa_id": empresa_id,
+        "razon_social": empresa.razon_social,
         "new_count": new_count,
         "total": len(result["notifications"]),
         "notifications": result["notifications"],
         "ai_summary": ai_summary,
         "synced_at": datetime.utcnow().isoformat(),
-        "is_demo": result.get("demo", False) or result.get("fallback", False),
-        "fallback_reason": result.get("fallback_reason"),
     }
 
 
-@app.get("/api/notifications/{ruc}")
-async def get_notifications(ruc: str, db: Session = Depends(get_db)):
-    """Retorna notificaciones guardadas para un RUC."""
+@app.get("/api/empresas/{empresa_id}/notifications")
+async def empresa_notifications(
+    empresa_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_owned_empresa(empresa_id, user, db)
     notifs = (
         db.query(Notification)
-        .filter(Notification.ruc == ruc)
+        .filter(Notification.empresa_id == empresa_id)
         .order_by(Notification.date_received.desc())
         .all()
     )
     return {
-        "ruc": ruc,
         "count": len(notifs),
         "notifications": [
             {
-                "id": n.id,
-                "subject": n.subject,
-                "sender": n.sender,
+                "id": n.id, "subject": n.subject, "sender": n.sender,
                 "date_received": n.date_received.isoformat() if n.date_received else None,
-                "reference_number": n.reference_number,
-                "status": n.status,
-                "body_text": n.body_text,
-                "has_attachment": n.has_attachment,
-                "attachment_name": n.attachment_name,
+                "reference_number": n.reference_number, "status": n.status,
+                "body_text": n.body_text, "category": n.category,
+                "has_attachment": n.has_attachment, "attachment_name": n.attachment_name,
                 "is_urgent": n.is_urgent,
-                "synced_at": n.synced_at.isoformat() if n.synced_at else None,
             }
             for n in notifs
         ],
     }
 
 
-@app.post("/api/send-email")
-async def send_email(req: EmailRequest, db: Session = Depends(get_db)):
-    """Envía resumen por correo electrónico."""
-    session = _sessions.get(req.session_id)
-    if not session:
-        raise HTTPException(401, "Sesión no válida.")
+# ── Descarga de PDF ──────────────────────────────────────────────────────────
+@app.get("/api/empresas/{empresa_id}/notifications/{notif_id}/pdf")
+async def download_pdf(
+    empresa_id: int,
+    notif_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    sess = _sunat_sessions.get(empresa_id)
+    if not sess or not sess.get("cookies"):
+        raise HTTPException(503, "Sesión SUNAT no disponible. Sincroniza la empresa primero.")
 
-    ruc = session["ruc"]
+    sunat_msg_id = notif_id.split("-")[-1]
+    if not sunat_msg_id.isdigit():
+        raise HTTPException(404, "No se pudo identificar el adjunto.")
+
+    result = await download_pdf_with_cookies(
+        sess["cookies"], empresa.ruc, sunat_msg_id, sess.get("buzon_url", "")
+    )
+    if not result.get("success"):
+        raise HTTPException(503, result.get("error", "No se pudo descargar el PDF."))
+
+    filename = result.get("filename") or f"sunat_{sunat_msg_id}.pdf"
+    return StreamingResponse(
+        iter([result["data"]]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── IA: interpretar una notificación ─────────────────────────────────────────
+@app.post("/api/interpret")
+async def interpret(req: InterpretRequest, user: User = Depends(get_current_user)):
+    interpretation = await generate_notification_interpretation(req.notification)
+    return {"success": True, "interpretation": interpretation}
+
+
+# ── Envío de resumen por correo ──────────────────────────────────────────────
+@app.post("/api/empresas/{empresa_id}/send-email")
+async def send_email(
+    empresa_id: int,
+    req: EmailRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    empresa = _get_owned_empresa(empresa_id, user, db)
     notifs = (
         db.query(Notification)
-        .filter(Notification.ruc == ruc)
+        .filter(Notification.empresa_id == empresa_id)
         .order_by(Notification.date_received.desc())
         .limit(50)
         .all()
     )
-
     notif_dicts = [
         {
             "subject": n.subject,
@@ -260,107 +399,24 @@ async def send_email(req: EmailRequest, db: Session = Depends(get_db)):
         }
         for n in notifs
     ]
-
-    result = await send_email_summary(req.to_email, notif_dicts, ruc)
+    result = await send_email_summary(req.to_email, notif_dicts, empresa.ruc)
     if not result["success"]:
         raise HTTPException(500, f"Error al enviar correo: {result.get('error')}")
-
     return {"success": True, "message": f"Resumen enviado a {req.to_email}"}
 
 
-@app.post("/api/mark-read")
-async def mark_read(req: MarkReadRequest, db: Session = Depends(get_db)):
-    """Marca notificaciones como leídas (solo si usuario confirma)."""
-    session = _sessions.get(req.session_id)
-    if not session:
-        raise HTTPException(401, "Sesión no válida.")
-
-    updated = 0
-    for notif_id in req.notification_ids:
-        notif = db.query(Notification).filter(Notification.id == notif_id).first()
-        if notif:
-            notif.status = "leido"
-            updated += 1
-
-    db.commit()
-    return {"success": True, "updated": updated}
-
-
-@app.get("/api/last-sync/{ruc}")
-async def last_sync(ruc: str, db: Session = Depends(get_db)):
-    log = (
-        db.query(SyncLog)
-        .filter(SyncLog.ruc == ruc, SyncLog.status == "ok")
-        .order_by(SyncLog.synced_at.desc())
-        .first()
-    )
-    if not log:
-        return {"last_sync": None}
-    return {"last_sync": log.synced_at.isoformat(), "count_new": log.count_new}
-
-
-@app.post("/api/interpret")
-async def interpret_notification(req: InterpretRequest):
-    """Interpreta una notificación SUNAT con IA."""
-    session = _sessions.get(req.session_id)
-    if not session:
-        raise HTTPException(401, "Sesión no válida.")
-    interpretation = await generate_notification_interpretation(req.notification)
-    return {"success": True, "interpretation": interpretation}
-
-
-@app.get("/api/notifications/{notif_id}/pdf")
-async def download_pdf(notif_id: str, session_id: str, db: Session = Depends(get_db)):
-    """Descarga el PDF adjunto de una notificación SUNAT."""
-    session = _sessions.get(session_id)
-    if not session:
-        raise HTTPException(401, "Sesión no válida.")
-
-    notif = db.query(Notification).filter(Notification.id == notif_id).first()
-    if not notif:
-        raise HTTPException(404, "Notificación no encontrada.")
-    if not notif.has_attachment:
-        raise HTTPException(404, "Esta notificación no tiene adjunto.")
-
-    # Modo demo: no hay PDF real disponible
-    if session.get("demo_mode") or notif_id.startswith("SUNAT-DEMO"):
-        raise HTTPException(
-            404,
-            "PDF disponible solo con conexión real a SUNAT. "
-            "Ingresa con tus credenciales SOL para descargar adjuntos."
-        )
-
-    # Extraer el ID de mensaje SUNAT del notif_id (formato: S-{ruc}-{msg_id})
-    parts = notif_id.split("-")
-    sunat_msg_id = parts[-1] if len(parts) >= 3 else ""
-    if not sunat_msg_id.isdigit():
-        raise HTTPException(404, "No se pudo identificar el adjunto en SUNAT.")
-
-    # Descargar el PDF reusando las cookies de la sesión activa (sin re-loguear)
-    cookies = session.get("sunat_cookies")
-    if not cookies:
-        raise HTTPException(503, "Sesión SUNAT no disponible. Vuelve a sincronizar primero.")
-
-    result = await download_pdf_with_cookies(
-        cookies, session["ruc"], sunat_msg_id, session.get("buzon_url", "")
-    )
-
-    if not result.get("success"):
-        raise HTTPException(
-            503,
-            result.get("error", "No se pudo descargar el PDF de SUNAT en este momento.")
-        )
-
-    filename = result.get("filename") or notif.attachment_name or f"sunat_{sunat_msg_id}.pdf"
-    return StreamingResponse(
-        iter([result["data"]]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@app.delete("/api/session/{session_id}")
-async def logout(session_id: str):
-    """Elimina sesión y borra credenciales de memoria."""
-    _sessions.pop(session_id, None)
-    return {"success": True}
+# ── Modo DEMO (sin autenticación) ────────────────────────────────────────────
+@app.post("/api/demo/sync")
+async def demo_sync():
+    result = await get_demo_notifications("20603448308")
+    ai_summary = await generate_ai_summary_expert(result["notifications"])
+    return {
+        "success": True,
+        "razon_social": "EMPRESA DEMO S.A.C.",
+        "new_count": len(result["notifications"]),
+        "total": len(result["notifications"]),
+        "notifications": result["notifications"],
+        "ai_summary": ai_summary,
+        "synced_at": datetime.utcnow().isoformat(),
+        "is_demo": True,
+    }
