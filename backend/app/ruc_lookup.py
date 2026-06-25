@@ -47,11 +47,18 @@ async def lookup_ruc(ruc: str) -> dict:
                 d = r.json()
                 rs = d.get("razonSocial") or d.get("nombre") or ""
                 if rs:
+                    ubic = ", ".join(x for x in [
+                        d.get("distrito", ""), d.get("provincia", ""), d.get("departamento", "")
+                    ] if x)
                     return {
                         "success": True,
                         "razon_social": rs,
                         "estado": d.get("estado", ""),
-                        "direccion": d.get("direccion", ""),
+                        "condicion": d.get("condicion", ""),
+                        "tipo": d.get("tipo", ""),
+                        "actividad_economica": d.get("actividadEconomica", "") or d.get("actividad", ""),
+                        "direccion": (d.get("direccion", "") or "").strip(),
+                        "ubicacion": ubic,
                         "source": "apis.net.pe",
                     }
     except Exception:

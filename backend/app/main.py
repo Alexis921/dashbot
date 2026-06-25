@@ -24,6 +24,7 @@ from app.auth import (
     encrypt_secret, decrypt_secret,
 )
 from app.ruc_lookup import lookup_ruc
+from app.cronograma import get_vencimientos
 from app.scraper import get_demo_notifications
 from app.playwright_scraper import scrape_with_playwright, download_pdf_with_cookies
 from app.email_service import send_email_summary
@@ -174,6 +175,11 @@ def _empresa_dict(e: Empresa) -> dict:
         "alias": e.alias, "sol_usuario": e.sol_usuario, "estado": e.estado,
         "last_login": e.last_login.isoformat() if e.last_login else None,
         "last_sync": e.last_sync.isoformat() if e.last_sync else None,
+        "estado_ruc": e.estado_ruc or "", "condicion": e.condicion or "",
+        "tipo_contrib": e.tipo_contrib or "", "actividad_economica": e.actividad_economica or "",
+        "direccion": e.direccion or "", "ubicacion": e.ubicacion or "",
+        "padrones": e.padrones or "",
+        "ruc_sync_at": e.ruc_sync_at.isoformat() if e.ruc_sync_at else None,
     }
 
 
@@ -357,6 +363,48 @@ async def sync_empresa(
 ):
     empresa = _get_owned_empresa(empresa_id, user, db)
     return await sync_empresa_core(empresa, db, want_ai=True)
+
+
+@app.post("/api/empresas/{empresa_id}/sync-ruc")
+async def sync_ruc(
+    empresa_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Consulta los datos públicos del RUC (estado, condición, dirección...) y los guarda."""
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    info = await lookup_ruc(empresa.ruc)
+    if not info.get("success"):
+        raise HTTPException(503, info.get("error", "No se pudo consultar el RUC en este momento."))
+
+    if info.get("razon_social"):
+        empresa.razon_social = info["razon_social"][:300]
+    empresa.estado_ruc = (info.get("estado") or "")[:40]
+    empresa.condicion = (info.get("condicion") or "")[:40]
+    empresa.tipo_contrib = (info.get("tipo") or "")[:120]
+    empresa.actividad_economica = (info.get("actividad_economica") or "")[:300]
+    empresa.direccion = (info.get("direccion") or "")[:400]
+    empresa.ubicacion = (info.get("ubicacion") or "")[:200]
+    empresa.ruc_sync_at = datetime.utcnow()
+    db.commit()
+    db.refresh(empresa)
+    return {"success": True, "empresa": _empresa_dict(empresa)}
+
+
+@app.get("/api/empresas/{empresa_id}/vencimientos")
+async def empresa_vencimientos(
+    empresa_id: int,
+    year: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cronograma oficial SUNAT (declaración) + vencimiento SIRE para la empresa."""
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    anio = year or datetime.utcnow().year
+    data = await get_vencimientos(empresa.ruc, anio, db)
+    data["ruc"] = empresa.ruc
+    data["razon_social"] = empresa.razon_social
+    return data
 
 
 @app.get("/api/empresas/{empresa_id}/notifications")

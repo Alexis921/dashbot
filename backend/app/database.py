@@ -57,6 +57,16 @@ class Empresa(Base):
     last_sync = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Datos del RUC (consulta pública SUNAT / apis.net.pe)
+    estado_ruc = Column(String(40))            # ACTIVO | BAJA DE OFICIO | ...
+    condicion = Column(String(40))             # HABIDO | NO HABIDO
+    tipo_contrib = Column(String(120))
+    actividad_economica = Column(String(300))
+    direccion = Column(String(400))
+    ubicacion = Column(String(200))            # distrito, provincia, departamento
+    padrones = Column(String(300))
+    ruc_sync_at = Column(DateTime)
+
     user = relationship("User", back_populates="empresas")
 
 
@@ -114,6 +124,18 @@ class Notification(Base):
     synced_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Cronograma(Base):
+    """Cache del cronograma oficial SUNAT por (año, último dígito de RUC)."""
+    __tablename__ = "cronogramas"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    anio = Column(Integer, index=True)
+    ultimo_digito = Column(String(1), index=True)
+    periodo_mes = Column(Integer)        # 1..12
+    fecha_venc = Column(DateTime)        # vencimiento de la declaración
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 
@@ -145,12 +167,24 @@ def _migrate_columns():
     from sqlalchemy import inspect, text
     try:
         insp = inspect(engine)
-        if "notifications" in insp.get_table_names():
-            cols = {c["name"] for c in insp.get_columns("notifications")}
-            with engine.begin() as conn:
+        tables = insp.get_table_names()
+        with engine.begin() as conn:
+            if "notifications" in tables:
+                cols = {c["name"] for c in insp.get_columns("notifications")}
                 if "empresa_id" not in cols:
                     conn.execute(text("ALTER TABLE notifications ADD COLUMN empresa_id INTEGER"))
                 if "category" not in cols:
                     conn.execute(text("ALTER TABLE notifications ADD COLUMN category VARCHAR(120)"))
+            if "empresas" in tables:
+                ecols = {c["name"] for c in insp.get_columns("empresas")}
+                nuevas = {
+                    "estado_ruc": "VARCHAR(40)", "condicion": "VARCHAR(40)",
+                    "tipo_contrib": "VARCHAR(120)", "actividad_economica": "VARCHAR(300)",
+                    "direccion": "VARCHAR(400)", "ubicacion": "VARCHAR(200)",
+                    "padrones": "VARCHAR(300)", "ruc_sync_at": "DATETIME",
+                }
+                for col, tipo in nuevas.items():
+                    if col not in ecols:
+                        conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col} {tipo}"))
     except Exception:
         pass

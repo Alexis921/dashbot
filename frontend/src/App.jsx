@@ -4,6 +4,7 @@ import ChatInterface from './components/ChatInterface'
 import Empresas from './components/Empresas'
 import Programacion from './components/Programacion'
 import Configuracion from './components/Configuracion'
+import Alertas from './components/Alertas'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
@@ -104,6 +105,9 @@ export default function App() {
     }
     if (activeModule === 'configuracion' && !demoMode) {
       return <Configuracion />
+    }
+    if (activeModule === 'alertas' && !demoMode) {
+      return <Alertas />
     }
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />

@@ -65,6 +65,15 @@ export async function apiDeleteEmpresa(id) {
   return req(`/api/empresas/${id}`, { method: 'DELETE' })
 }
 
+export async function apiSyncRuc(id) {
+  return req(`/api/empresas/${id}/sync-ruc`, { method: 'POST' })
+}
+
+export async function apiVencimientos(id, year) {
+  const q = year ? `?year=${year}` : ''
+  return req(`/api/empresas/${id}/vencimientos${q}`)
+}
+
 export async function apiSyncEmpresa(id) {
   return req(`/api/empresas/${id}/sync`, { method: 'POST' })
 }
