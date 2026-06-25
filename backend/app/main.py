@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -32,6 +32,7 @@ from app.cronograma import get_vencimientos
 from app.obligaciones import (
     generar_desde_cronograma, obligacion_dict, ESTADOS, ESTADOS_LABEL,
 )
+from app.document_ai import analizar_documento
 from app.scraper import get_demo_notifications
 from app.playwright_scraper import scrape_with_playwright, download_pdf_with_cookies
 from app.email_service import send_email_summary
@@ -563,6 +564,38 @@ async def delete_obligacion(
     db.delete(o)
     db.commit()
     return {"success": True}
+
+
+# ── IA de Documentos (Fase 3) ────────────────────────────────────────────────
+_MIME_OK = {"application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"}
+
+
+@app.post("/api/documentos/analizar")
+async def analizar_doc(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+):
+    """OCR + extracción con IA de un comprobante; devuelve datos + obligación sugerida."""
+    contenido = await file.read()
+    if len(contenido) > 12 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera los 12 MB.")
+
+    mime = (file.content_type or "").lower()
+    if mime not in _MIME_OK:
+        name = (file.filename or "").lower()
+        if name.endswith(".pdf"):
+            mime = "application/pdf"
+        elif name.endswith((".jpg", ".jpeg")):
+            mime = "image/jpeg"
+        elif name.endswith(".png"):
+            mime = "image/png"
+        else:
+            raise HTTPException(400, "Formato no soportado. Sube PDF, JPG o PNG.")
+
+    result = await analizar_documento(contenido, mime)
+    if not result.get("success"):
+        raise HTTPException(502, result.get("error", "No se pudo analizar el documento."))
+    return result
 
 
 @app.get("/api/empresas/{empresa_id}/notifications")

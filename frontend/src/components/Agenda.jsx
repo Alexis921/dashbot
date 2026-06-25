@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import EscanearDoc from './EscanearDoc'
 import {
   apiListObligaciones, apiListEmpresas, apiGenerarObligaciones,
   apiUpdateObligacion, apiCreateObligacion, apiDeleteObligacion,
@@ -162,6 +163,7 @@ export default function Agenda() {
   const [loading, setLoading] = useState(true)
   const [dragId, setDragId] = useState(null)
   const [showNueva, setShowNueva] = useState(false)
+  const [showEscanear, setShowEscanear] = useState(false)
   const [detalle, setDetalle] = useState(null)
   const [generando, setGenerando] = useState(false)
 
@@ -213,6 +215,7 @@ export default function Agenda() {
           <p className="prog-sub">Tu centro operativo. Las obligaciones se generan solas desde el cronograma SUNAT.</p>
         </div>
         <div className="ag-actions">
+          <button className="btn-secondary" onClick={() => setShowEscanear(true)}>📄 Escanear documento</button>
           <button className="btn-secondary" onClick={generar} disabled={generando}>
             {generando ? '⏳...' : '✨ Generar del cronograma'}
           </button>
@@ -281,6 +284,8 @@ export default function Agenda() {
 
       {showNueva && <NuevaModal empresas={empresas} onClose={() => setShowNueva(false)}
         onCreated={(o) => { setObligaciones((p) => [...p, o]); setShowNueva(false) }} />}
+      {showEscanear && <EscanearDoc empresas={empresas} onClose={() => setShowEscanear(false)}
+        onCreated={(o) => { setObligaciones((p) => [...p, o]); setShowEscanear(false); setVista('kanban') }} />}
       {detalle && <DetalleModal o={detalle} estados={estados} onClose={() => setDetalle(null)}
         onUpdate={actualizar} onDelete={eliminar} />}
     </div>

@@ -694,6 +694,41 @@ select.form-input { cursor: pointer; }
 .det-pill { font-size: 11px; background: var(--gray-50); color: var(--gray-700,#475569); padding: 3px 10px; border-radius: 8px; font-weight: 500; }
 .det-desc { font-size: 12.5px; color: var(--gray-600); line-height: 1.6; margin-bottom: 14px; background: var(--gray-50); padding: 10px 12px; border-radius: 8px; }
 
+/* ── ESCÁNER DE DOCUMENTOS (IA) ── */
+.doc-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+.doc-modal { background: var(--white); border-radius: 14px; width: 100%; max-width: 980px; height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+.doc-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--gray-100); }
+.doc-head-title { font-size: 16px; font-weight: 700; color: var(--navy); }
+.doc-close { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--gray-600); padding: 4px 8px; border-radius: 6px; }
+.doc-close:hover { background: var(--gray-100); }
+.doc-body { flex: 1; display: grid; grid-template-columns: 1.2fr 1fr; overflow: hidden; }
+
+.doc-viewer { background: var(--gray-100); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.doc-frame { width: 100%; height: 100%; border: none; }
+.doc-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.doc-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; cursor: pointer; padding: 40px; color: var(--gray-600); }
+.doc-drop-t { font-size: 16px; font-weight: 700; color: var(--navy); margin-top: 10px; }
+.doc-drop-s { font-size: 12px; max-width: 260px; margin-top: 4px; line-height: 1.5; }
+.doc-rechoose { position: absolute; bottom: 12px; right: 12px; background: var(--white); border: 1px solid var(--gray-200); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--navy); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+.doc-panel { padding: 20px; overflow-y: auto; border-left: 1px solid var(--gray-100); }
+.doc-panel-empty p { font-size: 13px; color: var(--gray-600); line-height: 1.7; margin-bottom: 16px; }
+.doc-detected { font-size: 12px; font-weight: 700; color: var(--green-dark); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 10px; }
+.doc-campos { display: flex; flex-direction: column; gap: 0; margin-bottom: 14px; }
+.doc-campo { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--gray-100); font-size: 12.5px; }
+.doc-campo-k { color: var(--gray-600); flex-shrink: 0; }
+.doc-campo-v { color: var(--gray-800); font-weight: 600; text-align: right; }
+.doc-detr { background: #e0f2fe; color: #075985; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 8px; margin: 8px 0; text-align: center; }
+
+.doc-sugerencia { background: var(--green-light); border: 1px solid var(--green); border-radius: 12px; padding: 16px; margin-top: 8px; }
+.doc-sug-head { font-size: 13px; font-weight: 700; color: var(--green-dark); margin-bottom: 8px; }
+.doc-sug-title { font-size: 15px; font-weight: 700; color: var(--navy); }
+.doc-sug-fecha { font-size: 13px; color: var(--gray-800); margin-top: 6px; }
+.doc-sug-nota { font-size: 11px; color: #92400e; background: #fef3c7; padding: 5px 10px; border-radius: 6px; margin-top: 8px; }
+.doc-sug-actions { display: flex; gap: 10px; margin-top: 14px; }
+.doc-sug-actions .btn-accent, .doc-sug-actions .btn-secondary { flex: 1; }
+.doc-sug-foot { font-size: 11px; color: var(--gray-600); margin-top: 10px; line-height: 1.5; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
   .login-left { display: none; }
@@ -705,4 +740,6 @@ select.form-input { cursor: pointer; }
   .venc-next-grid { grid-template-columns: 1fr 1fr; }
   .ag-toolbar { flex-direction: column; align-items: stretch; }
   .cal-cell { min-height: 60px; }
+  .doc-body { grid-template-columns: 1fr; }
+  .doc-viewer { min-height: 240px; }
 }

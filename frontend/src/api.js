@@ -133,6 +133,20 @@ export async function apiDeleteObligacion(id) {
   return req(`/api/obligaciones/${id}`, { method: 'DELETE' })
 }
 
+export async function apiAnalizarDocumento(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/documentos/analizar`, {
+    method: 'POST',
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+    body: fd,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'No se pudo analizar el documento')
+  return data
+}
+
 // ── Programación ───────────────────────────────────────────
 export async function apiGetProgramacion() {
   return req('/api/programacion')
