@@ -110,4 +110,9 @@ async def schedule_loop():
             await run_due_schedules()
         except Exception as e:
             print(f"[scheduler] loop error: {str(e)[:150]}")
+        try:
+            from app.recordatorios import run_recordatorios
+            await run_recordatorios()
+        except Exception as e:
+            print(f"[scheduler] recordatorios error: {str(e)[:150]}")
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)

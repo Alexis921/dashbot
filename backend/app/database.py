@@ -99,7 +99,23 @@ class Configuracion(Base):
     whatsapp_numero = Column(String(25))           # con código país, ej +51987654321
     whatsapp_apikey = Column(String(120))          # API key de CallMeBot
     whatsapp_nivel = Column(String(20), default="urgentes")  # urgentes | todas
+    # Recordatorios de vencimientos (Agenda Tributaria)
+    recordatorios_activo = Column(Boolean, default=False)
+    recordatorio_dias = Column(String(40), default="7,3,1,0")   # offsets de días
+    recordatorio_wsp = Column(Boolean, default=True)
+    recordatorio_email = Column(Boolean, default=False)
+    recordatorio_email_dest = Column(String(200))
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RecordatorioLog(Base):
+    """Evita reenviar el mismo recordatorio (dedup por obligación + offset de días)."""
+    __tablename__ = "recordatorio_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    obligacion_id = Column(Integer, index=True)
+    dias_offset = Column(Integer)
+    sent_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Notification(Base):
@@ -211,5 +227,17 @@ def _migrate_columns():
                 for col, tipo in nuevas.items():
                     if col not in ecols:
                         conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col} {tipo}"))
+            if "configuraciones" in tables:
+                ccols = {c["name"] for c in insp.get_columns("configuraciones")}
+                cnuevas = {
+                    "recordatorios_activo": "BOOLEAN DEFAULT 0",
+                    "recordatorio_dias": "VARCHAR(40) DEFAULT '7,3,1,0'",
+                    "recordatorio_wsp": "BOOLEAN DEFAULT 1",
+                    "recordatorio_email": "BOOLEAN DEFAULT 0",
+                    "recordatorio_email_dest": "VARCHAR(200)",
+                }
+                for col, tipo in cnuevas.items():
+                    if col not in ccols:
+                        conn.execute(text(f"ALTER TABLE configuraciones ADD COLUMN {col} {tipo}"))
     except Exception:
         pass

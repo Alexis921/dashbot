@@ -579,6 +579,18 @@ select.form-input { cursor: pointer; }
 .wa-help-steps li { font-size: 12.5px; color: var(--gray-600); line-height: 1.7; }
 .wa-help-steps em { color: var(--green-dark); font-style: normal; font-weight: 600; background: #dcfce7; padding: 1px 6px; border-radius: 4px; }
 
+/* ── RECORDATORIOS ── */
+.rec-dias { display: flex; flex-wrap: wrap; gap: 8px; }
+.rec-chip {
+  background: var(--white); border: 1.5px solid var(--gray-200); color: var(--gray-600);
+  padding: 7px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: all .15s;
+}
+.rec-chip.on { background: var(--navy); border-color: var(--navy); color: white; }
+.rec-canales { display: flex; flex-direction: column; gap: 8px; }
+.rec-canal { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--gray-800); cursor: pointer; }
+.rec-canal input { width: 17px; height: 17px; accent-color: var(--green); cursor: pointer; }
+.rec-canal small { color: var(--gray-600); font-weight: 400; }
+
 /* ── ALERTAS / VENCIMIENTOS ── */
 .ruc-card {
   background: var(--white); border: 1px solid var(--gray-100); border-radius: 14px;

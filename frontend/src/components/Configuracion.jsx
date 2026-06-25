@@ -12,6 +12,8 @@ function Toggle({ checked, onChange }) {
 export default function Configuracion() {
   const [cfg, setCfg] = useState({
     whatsapp_activo: false, whatsapp_numero: '', whatsapp_apikey: '', whatsapp_nivel: 'urgentes',
+    recordatorios_activo: false, recordatorio_dias: '7,3,1,0', recordatorio_wsp: true,
+    recordatorio_email: false, recordatorio_email_dest: '',
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -115,18 +117,80 @@ export default function Configuracion() {
             {testMsg.ok ? testMsg.text : `⚠️ ${testMsg.text}`}
           </div>
         )}
-        {saved && <div className="prog-saved">✓ Configuración guardada correctamente.</div>}
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-          <button className="btn-secondary" style={{ flex: 1 }} onClick={handleTest}
+        <div style={{ marginTop: 14 }}>
+          <button className="btn-secondary" style={{ width: '100%' }} onClick={handleTest}
             disabled={testing || !cfg.whatsapp_numero || !cfg.whatsapp_apikey}>
-            {testing ? '⏳ Enviando...' : '📤 Enviar prueba'}
-          </button>
-          <button className="btn-accent" style={{ flex: 1 }} onClick={handleSave} disabled={saving}>
-            {saving ? '⏳ Guardando...' : '💾 Guardar configuración'}
+            {testing ? '⏳ Enviando...' : '📤 Enviar mensaje de prueba'}
           </button>
         </div>
       </div>
+
+      {/* ── Recordatorios de vencimientos ── */}
+      <div className="prog-card" style={{ marginTop: 16 }}>
+        <div className="prog-card-head">
+          <div className="prog-card-icon" style={{ background: '#fef3c7' }}>⏰</div>
+          <div>
+            <div className="prog-card-title">Recordatorios de vencimientos</div>
+            <div className="prog-card-desc">Te avisamos antes de cada vencimiento de tu Agenda Tributaria (declaración y SIRE).</div>
+          </div>
+        </div>
+
+        <div className={`prog-toggle-row ${cfg.recordatorios_activo ? 'active' : ''}`}>
+          <div>
+            <div className="prog-toggle-title">Activar recordatorios automáticos</div>
+            <div className="prog-toggle-desc">Avisos antes del vencimiento de cada obligación pendiente.</div>
+          </div>
+          <Toggle checked={cfg.recordatorios_activo} onChange={(v) => set('recordatorios_activo', v)} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">¿Cuántos días antes avisar?</label>
+          <div className="rec-dias">
+            {[30, 15, 7, 3, 1, 0].map((d) => {
+              const sel = (cfg.recordatorio_dias || '').split(',').map((x) => x.trim()).includes(String(d))
+              return (
+                <button key={d} type="button" className={`rec-chip ${sel ? 'on' : ''}`}
+                  onClick={() => {
+                    const cur = new Set((cfg.recordatorio_dias || '').split(',').map((x) => x.trim()).filter(Boolean))
+                    sel ? cur.delete(String(d)) : cur.add(String(d))
+                    const ord = [...cur].map(Number).sort((a, b) => b - a).join(',')
+                    set('recordatorio_dias', ord)
+                  }}>
+                  {d === 0 ? 'El mismo día' : `${d} días`}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Canales</label>
+          <div className="rec-canales">
+            <label className="rec-canal">
+              <input type="checkbox" checked={cfg.recordatorio_wsp} onChange={(e) => set('recordatorio_wsp', e.target.checked)} />
+              <span>💬 WhatsApp <small>(usa el número de arriba)</small></span>
+            </label>
+            <label className="rec-canal">
+              <input type="checkbox" checked={cfg.recordatorio_email} onChange={(e) => set('recordatorio_email', e.target.checked)} />
+              <span>📧 Correo electrónico</span>
+            </label>
+          </div>
+        </div>
+
+        {cfg.recordatorio_email && (
+          <div className="form-group">
+            <label className="form-label">Correo de destino</label>
+            <input className="form-input" type="email" value={cfg.recordatorio_email_dest}
+              onChange={(e) => set('recordatorio_email_dest', e.target.value)} placeholder="reportes@tuempresa.com" />
+          </div>
+        )}
+      </div>
+
+      {saved && <div className="prog-saved" style={{ marginTop: 14 }}>✓ Configuración guardada correctamente.</div>}
+
+      <button className="btn-accent" style={{ width: '100%', marginTop: 16, padding: 12 }} onClick={handleSave} disabled={saving}>
+        {saving ? '⏳ Guardando...' : '💾 Guardar configuración'}
+      </button>
     </div>
   )
 }

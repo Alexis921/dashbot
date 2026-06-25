@@ -74,6 +74,36 @@ def build_html_summary(notifications: list, ruc: str) -> str:
 </html>"""
 
 
+async def send_simple_email(to_email: str, subject: str, html_body: str) -> dict:
+    """Envía un correo simple (usado por recordatorios de vencimientos)."""
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+    if not smtp_user or not smtp_pass:
+        return {"success": False, "error": "SMTP no configurado"}
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        from_name = os.getenv("SMTP_FROM_NAME", "Dashbot - Dashcont Technology")
+        from_addr = os.getenv("SMTP_FROM", smtp_user)
+        msg["From"] = f"{from_name} <{from_addr}>"
+        msg["To"] = to_email
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.ehlo(); server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, to_email, msg.as_string())
+        return {"success": True, "error": None}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 async def send_email_summary(to_email: str, notifications: list, ruc: str) -> dict:
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))

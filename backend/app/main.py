@@ -40,6 +40,7 @@ from app.ai_summary import (
 )
 from app.scheduler import schedule_loop, run_due_schedules, compute_next_run
 from app.whatsapp_service import send_whatsapp, build_alert_message
+from app.recordatorios import run_recordatorios
 
 CRON_TOKEN = os.getenv("CRON_TOKEN", "dashbot-cron-2026")
 
@@ -103,6 +104,11 @@ class ConfiguracionUpdate(BaseModel):
     whatsapp_numero: Optional[str] = ""
     whatsapp_apikey: Optional[str] = ""
     whatsapp_nivel: str = "urgentes"
+    recordatorios_activo: bool = False
+    recordatorio_dias: Optional[str] = "7,3,1,0"
+    recordatorio_wsp: bool = True
+    recordatorio_email: bool = False
+    recordatorio_email_dest: Optional[str] = ""
 
 
 class TestWhatsappRequest(BaseModel):
@@ -676,10 +682,12 @@ async def save_programacion(
 
 @app.post("/api/cron/tick")
 async def cron_tick(token: str = ""):
-    """Dispara las extracciones vencidas. Protegido por token (para cron externo)."""
+    """Dispara extracciones vencidas + recordatorios. Protegido por token (cron externo)."""
     if token != CRON_TOKEN:
         raise HTTPException(403, "Token inválido.")
-    return await run_due_schedules()
+    extracciones = await run_due_schedules()
+    recordatorios = await run_recordatorios()
+    return {"extracciones": extracciones, "recordatorios": recordatorios}
 
 
 # ── Configuración (alertas WhatsApp) ─────────────────────────────────────────
@@ -689,17 +697,27 @@ def _config_dict(c: Configuracion) -> dict:
         "whatsapp_numero": c.whatsapp_numero or "",
         "whatsapp_apikey": c.whatsapp_apikey or "",
         "whatsapp_nivel": c.whatsapp_nivel or "urgentes",
+        "recordatorios_activo": bool(c.recordatorios_activo),
+        "recordatorio_dias": c.recordatorio_dias or "7,3,1,0",
+        "recordatorio_wsp": c.recordatorio_wsp if c.recordatorio_wsp is not None else True,
+        "recordatorio_email": bool(c.recordatorio_email),
+        "recordatorio_email_dest": c.recordatorio_email_dest or "",
     }
+
+
+_CONFIG_DEFAULT = {
+    "whatsapp_activo": False, "whatsapp_numero": "", "whatsapp_apikey": "",
+    "whatsapp_nivel": "urgentes", "recordatorios_activo": False,
+    "recordatorio_dias": "7,3,1,0", "recordatorio_wsp": True,
+    "recordatorio_email": False, "recordatorio_email_dest": "",
+}
 
 
 @app.get("/api/configuracion")
 async def get_configuracion(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cfg = db.query(Configuracion).filter(Configuracion.user_id == user.id).first()
     if not cfg:
-        return {"configuracion": {
-            "whatsapp_activo": False, "whatsapp_numero": "",
-            "whatsapp_apikey": "", "whatsapp_nivel": "urgentes",
-        }}
+        return {"configuracion": dict(_CONFIG_DEFAULT)}
     return {"configuracion": _config_dict(cfg)}
 
 
@@ -717,6 +735,11 @@ async def save_configuracion(
     cfg.whatsapp_numero = (req.whatsapp_numero or "").strip()
     cfg.whatsapp_apikey = (req.whatsapp_apikey or "").strip()
     cfg.whatsapp_nivel = req.whatsapp_nivel if req.whatsapp_nivel in ("urgentes", "todas") else "urgentes"
+    cfg.recordatorios_activo = req.recordatorios_activo
+    cfg.recordatorio_dias = (req.recordatorio_dias or "7,3,1,0").strip()
+    cfg.recordatorio_wsp = req.recordatorio_wsp
+    cfg.recordatorio_email = req.recordatorio_email
+    cfg.recordatorio_email_dest = (req.recordatorio_email_dest or "").strip()
     cfg.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(cfg)
