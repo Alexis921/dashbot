@@ -79,6 +79,19 @@ class Programacion(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Configuracion(Base):
+    """Configuración del usuario (alertas WhatsApp, preferencias). Una por usuario."""
+    __tablename__ = "configuraciones"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, unique=True, nullable=False)
+    whatsapp_activo = Column(Boolean, default=False)
+    whatsapp_numero = Column(String(25))           # con código país, ej +51987654321
+    whatsapp_apikey = Column(String(120))          # API key de CallMeBot
+    whatsapp_nivel = Column(String(20), default="urgentes")  # urgentes | todas
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 

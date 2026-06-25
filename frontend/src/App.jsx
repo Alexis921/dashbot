@@ -3,6 +3,7 @@ import LoginForm from './components/LoginForm'
 import ChatInterface from './components/ChatInterface'
 import Empresas from './components/Empresas'
 import Programacion from './components/Programacion'
+import Configuracion from './components/Configuracion'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
@@ -100,6 +101,9 @@ export default function App() {
     }
     if (activeModule === 'programacion' && !demoMode) {
       return <Programacion />
+    }
+    if (activeModule === 'configuracion' && !demoMode) {
+      return <Configuracion />
     }
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />

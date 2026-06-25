@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
-from app.database import get_db, init_db, User, Empresa, Notification, SyncLog, Programacion
+from app.database import get_db, init_db, User, Empresa, Notification, SyncLog, Programacion, Configuracion
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
     encrypt_secret, decrypt_secret,
@@ -31,6 +31,7 @@ from app.ai_summary import (
     generate_ai_summary_expert, generate_notification_interpretation,
 )
 from app.scheduler import schedule_loop, run_due_schedules, compute_next_run
+from app.whatsapp_service import send_whatsapp, build_alert_message
 
 CRON_TOKEN = os.getenv("CRON_TOKEN", "dashbot-cron-2026")
 
@@ -87,6 +88,18 @@ class ProgramacionUpdate(BaseModel):
     correo_envio: Optional[str] = ""
     fuente_sol: bool = True
     fuente_sunafil: bool = False
+
+
+class ConfiguracionUpdate(BaseModel):
+    whatsapp_activo: bool = False
+    whatsapp_numero: Optional[str] = ""
+    whatsapp_apikey: Optional[str] = ""
+    whatsapp_nivel: str = "urgentes"
+
+
+class TestWhatsappRequest(BaseModel):
+    whatsapp_numero: str
+    whatsapp_apikey: str
 
 
 # ── Startup ────────────────────────────────────────────────────────────────
@@ -242,6 +255,19 @@ def _get_owned_empresa(empresa_id: int, user: User, db: Session) -> Empresa:
     return empresa
 
 
+async def _maybe_send_whatsapp_alert(empresa: Empresa, nuevas: list, db: Session):
+    """Envía alerta WhatsApp si el usuario la tiene activa y aplica al nivel elegido."""
+    cfg = db.query(Configuracion).filter(Configuracion.user_id == empresa.user_id).first()
+    if not cfg or not cfg.whatsapp_activo or not cfg.whatsapp_numero or not cfg.whatsapp_apikey:
+        return
+    mensaje = build_alert_message(
+        empresa.alias or empresa.razon_social, empresa.ruc, nuevas, cfg.whatsapp_nivel
+    )
+    if not mensaje:
+        return  # nivel "urgentes" pero no hay urgentes nuevas
+    await send_whatsapp(cfg.whatsapp_numero, cfg.whatsapp_apikey, mensaje)
+
+
 # ── Sincronización del buzón de una empresa ──────────────────────────────────
 async def sync_empresa_core(empresa: Empresa, db: Session, want_ai: bool = True) -> dict:
     """Lógica central de sincronización. Reutilizada por el endpoint y el scheduler."""
@@ -273,6 +299,7 @@ async def sync_empresa_core(empresa: Empresa, db: Session, want_ai: bool = True)
     }
 
     new_count = 0
+    nuevas = []  # notificaciones recién agregadas (para alertas WhatsApp)
     for n in result["notifications"]:
         existing = db.query(Notification).filter(Notification.id == n["id"]).first()
         if not existing:
@@ -293,12 +320,20 @@ async def sync_empresa_core(empresa: Empresa, db: Session, want_ai: bool = True)
                 is_urgent=n.get("is_urgent", False),
             ))
             new_count += 1
+            nuevas.append(n)
 
     empresa.estado = "activa"
     empresa.last_login = datetime.utcnow()
     empresa.last_sync = datetime.utcnow()
     db.add(SyncLog(ruc=empresa.ruc, empresa_id=empresa.id, status="ok", count_new=new_count))
     db.commit()
+
+    # Alerta por WhatsApp si el usuario la tiene activa y hay notificaciones nuevas
+    if nuevas:
+        try:
+            await _maybe_send_whatsapp_alert(empresa, nuevas, db)
+        except Exception as e:
+            print(f"[whatsapp] error: {str(e)[:120]}")
 
     ai_summary = await generate_ai_summary_expert(result["notifications"]) if want_ai else ""
 
@@ -445,6 +480,63 @@ async def cron_tick(token: str = ""):
     if token != CRON_TOKEN:
         raise HTTPException(403, "Token inválido.")
     return await run_due_schedules()
+
+
+# ── Configuración (alertas WhatsApp) ─────────────────────────────────────────
+def _config_dict(c: Configuracion) -> dict:
+    return {
+        "whatsapp_activo": c.whatsapp_activo,
+        "whatsapp_numero": c.whatsapp_numero or "",
+        "whatsapp_apikey": c.whatsapp_apikey or "",
+        "whatsapp_nivel": c.whatsapp_nivel or "urgentes",
+    }
+
+
+@app.get("/api/configuracion")
+async def get_configuracion(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    cfg = db.query(Configuracion).filter(Configuracion.user_id == user.id).first()
+    if not cfg:
+        return {"configuracion": {
+            "whatsapp_activo": False, "whatsapp_numero": "",
+            "whatsapp_apikey": "", "whatsapp_nivel": "urgentes",
+        }}
+    return {"configuracion": _config_dict(cfg)}
+
+
+@app.put("/api/configuracion")
+async def save_configuracion(
+    req: ConfiguracionUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cfg = db.query(Configuracion).filter(Configuracion.user_id == user.id).first()
+    if not cfg:
+        cfg = Configuracion(user_id=user.id)
+        db.add(cfg)
+    cfg.whatsapp_activo = req.whatsapp_activo
+    cfg.whatsapp_numero = (req.whatsapp_numero or "").strip()
+    cfg.whatsapp_apikey = (req.whatsapp_apikey or "").strip()
+    cfg.whatsapp_nivel = req.whatsapp_nivel if req.whatsapp_nivel in ("urgentes", "todas") else "urgentes"
+    cfg.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(cfg)
+    return {"success": True, "configuracion": _config_dict(cfg)}
+
+
+@app.post("/api/configuracion/test-whatsapp")
+async def test_whatsapp(
+    req: TestWhatsappRequest,
+    user: User = Depends(get_current_user),
+):
+    msg = (
+        "✅ *Dashbot* - Mensaje de prueba\n\n"
+        "¡Tus alertas por WhatsApp están funcionando! "
+        "Aquí recibirás avisos de notificaciones nuevas de SUNAT."
+    )
+    result = await send_whatsapp(req.whatsapp_numero, req.whatsapp_apikey, msg)
+    if not result.get("success"):
+        raise HTTPException(400, result.get("error", "No se pudo enviar el WhatsApp de prueba."))
+    return {"success": True, "message": "Mensaje de prueba enviado. Revisa tu WhatsApp."}
 
 
 # ── IA: interpretar una notificación ─────────────────────────────────────────

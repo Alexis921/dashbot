@@ -110,6 +110,21 @@ export async function apiSaveProgramacion(cfg) {
   return req('/api/programacion', { method: 'PUT', body: cfg })
 }
 
+// ── Configuración (WhatsApp) ───────────────────────────────
+export async function apiGetConfiguracion() {
+  return req('/api/configuracion')
+}
+
+export async function apiSaveConfiguracion(cfg) {
+  return req('/api/configuracion', { method: 'PUT', body: cfg })
+}
+
+export async function apiTestWhatsapp(whatsapp_numero, whatsapp_apikey) {
+  return req('/api/configuracion/test-whatsapp', {
+    method: 'POST', body: { whatsapp_numero, whatsapp_apikey },
+  })
+}
+
 // ── Demo ───────────────────────────────────────────────────
 export async function apiDemoSync() {
   return req('/api/demo/sync', { method: 'POST', auth: false })
