@@ -18,7 +18,7 @@ async def _call_gemini(prompt: str, max_tokens: int = 600) -> str | None:
         async with httpx.AsyncClient(timeout=20.0) as client:
             resp = await client.post(
                 GEMINI_API_URL,
-                params={"key": api_key},
+                headers={"x-goog-api-key": api_key},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},

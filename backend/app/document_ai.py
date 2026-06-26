@@ -92,7 +92,8 @@ async def analizar_documento(file_bytes: bytes, mime_type: str) -> dict:
     }
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(f"{GEMINI_URL}?key={GEMINI_KEY}", json=payload)
+            r = await client.post(GEMINI_URL, json=payload,
+                                  headers={"x-goog-api-key": GEMINI_KEY})
             if r.status_code != 200:
                 return {"success": False, "error": f"Gemini respondió {r.status_code}: {r.text[:200]}"}
             data = r.json()
