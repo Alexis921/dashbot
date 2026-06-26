@@ -15,7 +15,9 @@ import httpx
 from app.cronograma import es_dia_habil
 
 GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+# flash-lite: soporta visión/PDF y tiene cuota gratis más generosa que flash
+GEMINI_MODEL = os.getenv("GEMINI_DOC_MODEL", "gemini-2.0-flash-lite")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 EXTRACTION_PROMPT = """Eres un asistente contable experto en tributación peruana (SUNAT).
 Analiza este comprobante electrónico (factura, boleta, nota, comprobante de retención o percepción)
