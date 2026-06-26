@@ -51,7 +51,10 @@ y extrae los datos en JSON EXACTO con estas claves (usa null si no aplica o no s
 
 Reglas:
 - Los montos son números (sin símbolo de moneda ni separador de miles).
-- Si el documento menciona detracción/SPOT, detraccion_aplica=true y completa porcentaje y monto.
+- IMPORTANTE: la DETRACCIÓN (SPOT) y la RETENCIÓN del IGV son regímenes DISTINTOS.
+  Un "Comprobante de Retención" aplica RETENCIÓN (normalmente 3%), NO detracción:
+  en ese caso detraccion_aplica=false. Solo pon detraccion_aplica=true si el documento
+  menciona explícitamente "detracción" o "SPOT".
 - Calcula cualquier dato faltante si es deducible (ej. igv = base * 0.18; total = base + igv).
 - Responde SOLO el JSON, sin texto adicional."""
 
