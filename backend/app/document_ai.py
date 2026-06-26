@@ -19,6 +19,11 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_DOC_MODEL", "gemini-2.0-flash-lite")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
+# Groq (gratis, sin tarjeta). Proveedor primario cuando hay GROQ_API_KEY.
+GROQ_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+
 EXTRACTION_PROMPT = """Eres un asistente contable experto en tributación peruana (SUNAT).
 Analiza este comprobante electrónico (factura, boleta, nota, comprobante de retención o percepción)
 y extrae los datos en JSON EXACTO con estas claves (usa null si no aplica o no se encuentra):
@@ -77,33 +82,82 @@ def _parse_date(s):
         return None
 
 
-async def analizar_documento(file_bytes: bytes, mime_type: str) -> dict:
-    """Envía el documento a Gemini, devuelve datos extraídos + obligación sugerida."""
-    if not GEMINI_KEY:
-        return {"success": False, "error": "GEMINI_API_KEY no configurada en el servidor."}
+def _pdf_a_png(pdf_bytes: bytes) -> bytes | None:
+    """Renderiza la primera página del PDF a PNG (para proveedores que solo aceptan imágenes)."""
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page = doc[0]
+        pix = page.get_pixmap(dpi=150)
+        return pix.tobytes("png")
+    except Exception:
+        return None
 
+
+async def _call_groq(img_bytes: bytes, mime: str) -> dict:
+    """Llama a Groq (visión, gratis) con una imagen. Devuelve {ok, text|error, status}."""
+    b64 = base64.b64encode(img_bytes).decode()
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": EXTRACTION_PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+            ],
+        }],
+        "temperature": 0.1,
+        "response_format": {"type": "json_object"},
+        "max_tokens": 1024,
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(GROQ_URL, json=payload,
+                              headers={"Authorization": f"Bearer {GROQ_KEY}"})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Groq respondió {r.status_code}: {r.text[:200]}"}
+        return {"ok": True, "text": r.json()["choices"][0]["message"]["content"]}
+
+
+async def _call_gemini_doc(file_bytes: bytes, mime: str) -> dict:
     b64 = base64.b64encode(file_bytes).decode()
     payload = {
-        "contents": [{
-            "parts": [
-                {"text": EXTRACTION_PROMPT},
-                {"inline_data": {"mime_type": mime_type, "data": b64}},
-            ]
-        }],
+        "contents": [{"parts": [
+            {"text": EXTRACTION_PROMPT},
+            {"inline_data": {"mime_type": mime, "data": b64}},
+        ]}],
         "generationConfig": {"temperature": 0.1, "response_mime_type": "application/json"},
     }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(GEMINI_URL, json=payload, headers={"x-goog-api-key": GEMINI_KEY})
+        if r.status_code != 200:
+            return {"ok": False, "error": f"Gemini respondió {r.status_code}: {r.text[:200]}"}
+        return {"ok": True, "text": r.json()["candidates"][0]["content"]["parts"][0]["text"]}
+
+
+async def analizar_documento(file_bytes: bytes, mime_type: str) -> dict:
+    """OCR + extracción con IA. Usa Groq (gratis) si hay key; si no, Gemini."""
+    if not GROQ_KEY and not GEMINI_KEY:
+        return {"success": False, "error": "No hay proveedor de IA configurado (GROQ_API_KEY o GEMINI_API_KEY)."}
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(GEMINI_URL, json=payload,
-                                  headers={"x-goog-api-key": GEMINI_KEY})
-            if r.status_code != 200:
-                return {"success": False, "error": f"Gemini respondió {r.status_code}: {r.text[:200]}"}
-            data = r.json()
-            txt = data["candidates"][0]["content"]["parts"][0]["text"]
+        if GROQ_KEY:
+            # Groq solo acepta imágenes → convertir PDF a PNG
+            if mime_type == "application/pdf":
+                png = _pdf_a_png(file_bytes)
+                if not png:
+                    return {"success": False, "error": "No se pudo convertir el PDF a imagen."}
+                res = await _call_groq(png, "image/png")
+            else:
+                res = await _call_groq(file_bytes, mime_type)
+        else:
+            res = await _call_gemini_doc(file_bytes, mime_type)
     except Exception as e:
         return {"success": False, "error": f"Error al analizar con IA: {str(e)[:200]}"}
 
-    # Parsear el JSON devuelto
+    if not res.get("ok"):
+        return {"success": False, "error": res.get("error", "La IA no respondió.")}
+
+    txt = res["text"]
     try:
         m = re.search(r"\{.*\}", txt, re.DOTALL)
         datos = json.loads(m.group(0) if m else txt)
