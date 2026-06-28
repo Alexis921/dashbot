@@ -146,3 +146,33 @@ async def chat_obligacion(o: Obligacion, empresa_nombre: str, pregunta: str,
             return r.json()["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"Error en el chat IA: {str(e)[:120]}"
+
+
+async def chat_general(nombre: str, pregunta: str, historial: list = None, contexto: str = "") -> str:
+    """Asistente tributario general de Dashbot (Groq, gratis)."""
+    if not GROQ_KEY:
+        return "El asistente no está disponible por ahora."
+    system = (
+        "Eres Dashbot, un asistente tributario peruano experto en SUNAT, detracciones, "
+        "IGV, renta, SIRE, cronogramas de vencimiento y obligaciones formales. "
+        f"Te diriges al usuario ({nombre or 'contador'}) de forma cercana, clara y práctica. "
+        "Das respuestas breves y accionables; cuando corresponde citas la norma (Código Tributario, "
+        "resoluciones SUNAT). Si la pregunta excede tu alcance, sugieres verificar en SUNAT o con un "
+        "especialista. No inventas datos específicos del usuario que no estén en el contexto."
+    )
+    mensajes = [{"role": "system", "content": system}]
+    if contexto:
+        mensajes.append({"role": "system", "content": f"CONTEXTO DEL USUARIO:\n{contexto}"})
+    for h in (historial or [])[-6:]:
+        mensajes.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    mensajes.append({"role": "user", "content": pregunta})
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            r = await client.post(GROQ_URL, headers={"Authorization": f"Bearer {GROQ_KEY}"},
+                                  json={"model": GROQ_TEXT_MODEL, "messages": mensajes,
+                                        "temperature": 0.4, "max_tokens": 800})
+            if r.status_code != 200:
+                return f"No se pudo responder ahora (IA {r.status_code})."
+            return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return f"Error en el asistente: {str(e)[:120]}"

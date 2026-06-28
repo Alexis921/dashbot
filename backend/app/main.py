@@ -32,7 +32,7 @@ from app.ruc_lookup import lookup_ruc
 from app.cronograma import get_vencimientos
 from app.obligaciones import (
     generar_desde_cronograma, obligacion_dict, ESTADOS, ESTADOS_LABEL,
-    evento_dict, log_actividad, chat_obligacion,
+    evento_dict, log_actividad, chat_obligacion, chat_general,
 )
 from app.document_ai import analizar_documento
 from app.scraper import get_demo_notifications
@@ -159,6 +159,11 @@ class ComentarioReq(BaseModel):
 
 
 class ChatReq(BaseModel):
+    pregunta: str
+    historial: Optional[list] = None
+
+
+class ChatGeneralReq(BaseModel):
     pregunta: str
     historial: Optional[list] = None
 
@@ -1001,6 +1006,33 @@ async def test_whatsapp(
 async def interpret(req: InterpretRequest, user: User = Depends(get_current_user)):
     interpretation = await generate_notification_interpretation(req.notification)
     return {"success": True, "interpretation": interpretation}
+
+
+# ── Chatbot general (Centro de Mando) ────────────────────────────────────────
+@app.post("/api/chat")
+async def chat(
+    req: ChatGeneralReq,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not req.pregunta.strip():
+        raise HTTPException(400, "Escribe una pregunta.")
+    # Contexto: empresas + próximo vencimiento pendiente
+    n_emp = db.query(Empresa).filter(Empresa.user_id == user.id).count()
+    prox = (
+        db.query(Obligacion)
+        .filter(Obligacion.user_id == user.id,
+                ~Obligacion.estado.in_(("pagado", "declarado", "archivado")),
+                Obligacion.fecha_vencimiento >= datetime.utcnow())
+        .order_by(Obligacion.fecha_vencimiento)
+        .first()
+    )
+    contexto = f"El usuario tiene {n_emp} empresa(s) registrada(s) en Dashbot."
+    if prox:
+        contexto += (f" Su próxima obligación es '{prox.titulo}' que vence el "
+                     f"{prox.fecha_vencimiento.date().isoformat()}.")
+    respuesta = await chat_general(user.nombre, req.pregunta.strip(), req.historial, contexto)
+    return {"success": True, "respuesta": respuesta}
 
 
 # ── Envío de resumen por correo ──────────────────────────────────────────────

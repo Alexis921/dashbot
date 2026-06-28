@@ -212,6 +212,11 @@ export async function apiTestWhatsapp(whatsapp_numero, whatsapp_apikey) {
   })
 }
 
+// ── Chatbot general (Centro de Mando) ──────────────────────
+export async function apiChat(pregunta, historial) {
+  return req('/api/chat', { method: 'POST', body: { pregunta, historial } })
+}
+
 // ── Demo ───────────────────────────────────────────────────
 export async function apiDemoSync() {
   return req('/api/demo/sync', { method: 'POST', auth: false })

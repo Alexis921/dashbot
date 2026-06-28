@@ -6,6 +6,7 @@ import Programacion from './components/Programacion'
 import Configuracion from './components/Configuracion'
 import Alertas from './components/Alertas'
 import Agenda from './components/Agenda'
+import CentroMando from './components/CentroMando'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
@@ -117,7 +118,7 @@ export default function App() {
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />
       if (selectedEmpresa) return <ChatInterface empresa={selectedEmpresa} key={selectedEmpresa.id} />
-      return <NoEmpresaSelected onGoEmpresas={() => setActiveModule('empresas')} />
+      return <CentroMando user={user} onOpenEmpresa={openEmpresa} onGoModule={setActiveModule} />
     }
     return <ComingSoon title={activeItem?.label} icon={activeItem?.icon} />
   }
