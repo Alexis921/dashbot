@@ -282,6 +282,35 @@ body {
 .typing-dots span:nth-child(3) { animation-delay: .4s; }
 @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
 
+/* ── SYNC LOADER (carga de sincronización) ── */
+.sync-loader {
+  background: var(--white); border: 1px solid var(--gray-100); border-radius: 14px;
+  padding: 28px 26px 22px; max-width: 480px; margin: 8px 0;
+  box-shadow: 0 4px 16px rgba(27,58,107,.07); text-align: center;
+}
+.sl-track { position: relative; height: 38px; margin-bottom: 16px; }
+.sl-bot {
+  position: absolute; top: 0; font-size: 24px; transition: left .35s ease;
+  animation: sl-walk .7s infinite ease-in-out; z-index: 2;
+}
+@keyframes sl-walk { 0%,100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-7px) rotate(4deg); } }
+.sl-bar {
+  position: absolute; bottom: 4px; left: 0; right: 0; height: 9px;
+  background: var(--gray-100); border-radius: 6px; overflow: hidden;
+}
+.sl-fill {
+  height: 100%; border-radius: 6px; transition: width .35s ease;
+  background: linear-gradient(90deg, var(--navy), var(--green));
+  background-size: 200% 100%; animation: sl-shine 1.6s linear infinite;
+}
+@keyframes sl-shine { from { background-position: 0% 0; } to { background-position: -200% 0; } }
+.sl-frase {
+  font-size: 14px; font-weight: 600; color: var(--navy);
+  min-height: 20px; animation: sl-fade .5s ease;
+}
+@keyframes sl-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.sl-sub { font-size: 11.5px; color: var(--gray-600); margin-top: 6px; }
+
 /* ── MODAL ── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.45);

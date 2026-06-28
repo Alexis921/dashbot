@@ -41,6 +41,37 @@ function TypingMsg() {
   )
 }
 
+const FRASES_SYNC = [
+  '🔐 Conectando de forma segura con SUNAT…',
+  '📬 Abriendo tu buzón electrónico SOL…',
+  '🔎 Leyendo tus notificaciones…',
+  '🚨 Detectando lo urgente por ti…',
+  '🧠 Analizando con inteligencia artificial…',
+  '📅 Ordenando todo de lo más reciente a lo más antiguo…',
+  '💪 ¡Tú tranquilo, Dashbot se encarga del trabajo pesado!',
+  '✨ Casi listo… preparando tu resumen ejecutivo.',
+]
+
+function SyncLoader() {
+  const [prog, setProg] = useState(6)
+  const [fi, setFi] = useState(0)
+  useEffect(() => {
+    const p = setInterval(() => setProg((x) => Math.min(94, x + (94 - x) * 0.06 + 0.4)), 350)
+    const f = setInterval(() => setFi((i) => (i + 1) % FRASES_SYNC.length), 2500)
+    return () => { clearInterval(p); clearInterval(f) }
+  }, [])
+  return (
+    <div className="sync-loader">
+      <div className="sl-track">
+        <div className="sl-bot" style={{ left: `calc(${prog}% - 16px)` }}>🤖</div>
+        <div className="sl-bar"><div className="sl-fill" style={{ width: `${prog}%` }} /></div>
+      </div>
+      <div className="sl-frase" key={fi}>{FRASES_SYNC[fi]}</div>
+      <div className="sl-sub">Esto puede tardar unos segundos. Estamos trayendo todo desde SUNAT…</div>
+    </div>
+  )
+}
+
 function SummaryCard({ summary, notifications, onSendEmail }) {
   const urgent = notifications.filter((n) => n.is_urgent).length
   const pending = notifications.filter((n) => n.status === 'nuevo').length
@@ -155,7 +186,7 @@ export default function ChatInterface({ empresa, demoMode = false }) {
             </p>
             <div className="notif-list">
               {[...(data.notifications || [])]
-                .sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
+                .sort((a, b) => new Date(b.date_received || 0) - new Date(a.date_received || 0))
                 .map((n) => (
                   <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} empresaId={empresaId} demoMode={demoMode} />
                 ))}
@@ -204,6 +235,7 @@ export default function ChatInterface({ empresa, demoMode = false }) {
     } else if (t.includes('urgent') || t.includes('import')) {
       addUser(text)
       const u = notifications.filter((n) => n.is_urgent)
+        .sort((a, b) => new Date(b.date_received || 0) - new Date(a.date_received || 0))
       if (!u.length) addBot('✅ No tienes notificaciones urgentes en este momento.')
       else addBot(<div><p style={{ marginBottom: 8, fontWeight: 600, color: '#dc3545' }}>🔴 {u.length} urgente(s):</p><div className="notif-list">{u.map((n) => <NotificationCard key={n.id} notif={n} onMarkRead={handleMarkRead} empresaId={empresaId} demoMode={demoMode} />)}</div></div>)
     } else if (t.includes('correo') || t.includes('email') || t.includes('enviar')) {
@@ -233,7 +265,7 @@ export default function ChatInterface({ empresa, demoMode = false }) {
             ? <BotMsg key={m.id} time={m.time}>{m.content}</BotMsg>
             : <UserMsg key={m.id} text={m.text} time={m.time} />
         )}
-        {typing && <TypingMsg />}
+        {typing && (syncing ? <SyncLoader /> : <TypingMsg />)}
         <div ref={bottomRef} />
       </div>
 
