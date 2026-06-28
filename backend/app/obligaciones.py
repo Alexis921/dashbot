@@ -2,10 +2,18 @@
 Dominio de Obligaciones Tributarias (Agenda Tributaria Inteligente).
 Genera obligaciones automáticamente desde el cronograma oficial SUNAT.
 """
+import os
+import json
 from datetime import datetime, date
 
-from app.database import Obligacion
+import httpx
+
+from app.database import Obligacion, ObligacionEvento
 from app.cronograma import get_vencimientos
+
+GROQ_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_TEXT_MODEL = os.getenv("GROQ_TEXT_MODEL", "llama-3.3-70b-versatile")
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Estados del Kanban (en orden de flujo)
 ESTADOS = [
@@ -64,6 +72,14 @@ async def generar_desde_cronograma(empresa, anio: int, db) -> dict:
     return {"success": True, "creadas": creadas, "anio": anio}
 
 
+def _load_checklist(raw):
+    try:
+        items = json.loads(raw) if raw else []
+        return [{"texto": i.get("texto", ""), "done": bool(i.get("done"))} for i in items if i.get("texto")]
+    except Exception:
+        return []
+
+
 def obligacion_dict(o: Obligacion, empresa_nombre: str = "") -> dict:
     fv = o.fecha_vencimiento
     dias = (fv.date() - date.today()).days if fv else None
@@ -74,5 +90,56 @@ def obligacion_dict(o: Obligacion, empresa_nombre: str = "") -> dict:
         "responsable": o.responsable or "", "monto": o.monto or "", "origen": o.origen,
         "fecha_vencimiento": fv.date().isoformat() if fv else None,
         "dias_restantes": dias,
+        "observaciones": o.observaciones or "",
+        "checklist": _load_checklist(o.checklist),
         "created_at": o.created_at.isoformat() if o.created_at else None,
     }
+
+
+def evento_dict(e: ObligacionEvento) -> dict:
+    return {
+        "id": e.id, "tipo": e.tipo, "texto": e.texto or "",
+        "autor": e.autor or "", "archivo_nombre": e.archivo_nombre or "",
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+def log_actividad(db, obligacion_id: int, texto: str, autor: str = "Sistema"):
+    db.add(ObligacionEvento(obligacion_id=obligacion_id, tipo="actividad",
+                            texto=texto, autor=autor))
+
+
+async def chat_obligacion(o: Obligacion, empresa_nombre: str, pregunta: str,
+                          historial: list = None) -> str:
+    """Responde una pregunta sobre la obligación usando Groq (gratis)."""
+    if not GROQ_KEY:
+        return "El chat IA no está disponible (falta configurar el proveedor)."
+    contexto = (
+        f"Obligación tributaria: {o.titulo}\n"
+        f"Tipo: {o.tipo} | Estado: {o.estado} | Prioridad: {o.prioridad}\n"
+        f"Empresa: {empresa_nombre} | Período: {o.periodo or '-'}\n"
+        f"Vence: {o.fecha_vencimiento.date().isoformat() if o.fecha_vencimiento else '-'}\n"
+        f"Descripción: {o.descripcion or '-'}\n"
+        f"Observaciones: {o.observaciones or '-'}"
+    )
+    system = (
+        "Eres un asesor tributario peruano experto (SUNAT). Responde de forma breve, "
+        "clara y práctica sobre la obligación tributaria del contexto. Si te preguntan por "
+        "plazos, montos o fundamentos, sé preciso y cita la norma cuando aplique. "
+        "No inventes datos que no estén en el contexto."
+    )
+    mensajes = [{"role": "system", "content": system},
+                {"role": "system", "content": f"CONTEXTO:\n{contexto}"}]
+    for h in (historial or [])[-6:]:
+        mensajes.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    mensajes.append({"role": "user", "content": pregunta})
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            r = await client.post(GROQ_URL, headers={"Authorization": f"Bearer {GROQ_KEY}"},
+                                  json={"model": GROQ_TEXT_MODEL, "messages": mensajes,
+                                        "temperature": 0.3, "max_tokens": 700})
+            if r.status_code != 200:
+                return f"No se pudo responder ahora (IA {r.status_code})."
+            return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return f"Error en el chat IA: {str(e)[:120]}"

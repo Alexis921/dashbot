@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import EscanearDoc from './EscanearDoc'
+import ObligacionPage from './ObligacionPage'
 import {
   apiListObligaciones, apiListEmpresas, apiGenerarObligaciones,
   apiUpdateObligacion, apiCreateObligacion, apiDeleteObligacion,
@@ -86,35 +87,6 @@ function NuevaModal({ empresas, onClose, onCreated }) {
   )
 }
 
-function DetalleModal({ o, estados, onClose, onUpdate, onDelete }) {
-  const p = PRIO[o.prioridad] || PRIO.media
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <h3>{TIPO_ICON[o.tipo] || '📌'} {o.titulo}</h3>
-        <div className="det-meta">
-          <span className="ag-prio" style={{ background: p.bg, color: p.c }}>{p.t}</span>
-          {o.empresa && <span className="det-pill">{o.empresa}</span>}
-          {o.periodo && <span className="det-pill">{o.periodo}</span>}
-          <span className="det-pill">📅 {fmtFecha(o.fecha_vencimiento)}</span>
-        </div>
-        {o.descripcion && <p className="det-desc">{o.descripcion}</p>}
-        <div className="form-group"><label className="form-label">Estado</label>
-          <select className="form-input" value={o.estado} onChange={(e) => onUpdate(o.id, { estado: e.target.value })}>
-            {estados.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-          </select></div>
-        <div className="form-group"><label className="form-label">Prioridad</label>
-          <select className="form-input" value={o.prioridad} onChange={(e) => onUpdate(o.id, { prioridad: e.target.value })}>
-            <option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option>
-          </select></div>
-        <div className="modal-actions">
-          <button className="btn-secondary" style={{ color: '#dc2626' }} onClick={() => onDelete(o.id)}>🗑️ Eliminar</button>
-          <button className="btn-accent" onClick={onClose}>Cerrar</button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function Calendario({ obligaciones, onClick }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() } })
@@ -181,11 +153,6 @@ export default function Agenda() {
   async function moverEstado(id, estado) {
     setObligaciones((prev) => prev.map((o) => o.id === id ? { ...o, estado } : o))
     try { await apiUpdateObligacion(id, { estado }) } catch { load() }
-  }
-  async function actualizar(id, data) {
-    const d = await apiUpdateObligacion(id, data)
-    setObligaciones((prev) => prev.map((o) => o.id === id ? d.obligacion : o))
-    setDetalle((dd) => dd && dd.id === id ? d.obligacion : dd)
   }
   async function eliminar(id) {
     if (!confirm('¿Eliminar esta obligación?')) return
@@ -286,8 +253,10 @@ export default function Agenda() {
         onCreated={(o) => { setObligaciones((p) => [...p, o]); setShowNueva(false) }} />}
       {showEscanear && <EscanearDoc empresas={empresas} onClose={() => setShowEscanear(false)}
         onCreated={(o) => { setObligaciones((p) => [...p, o]); setShowEscanear(false); setVista('kanban') }} />}
-      {detalle && <DetalleModal o={detalle} estados={estados} onClose={() => setDetalle(null)}
-        onUpdate={actualizar} onDelete={eliminar} />}
+      {detalle && <ObligacionPage obligacionId={detalle.id} estados={estados}
+        onClose={() => setDetalle(null)}
+        onChanged={(o) => setObligaciones((prev) => prev.map((x) => x.id === o.id ? o : x))}
+        onDelete={() => eliminar(detalle.id)} />}
     </div>
   )
 }

@@ -160,9 +160,25 @@ class Obligacion(Base):
     monto = Column(String(40))                             # opcional, texto libre por ahora
     origen = Column(String(30), default="manual")          # auto_cronograma | manual | ia_documento
 
+    observaciones = Column(Text)        # notas libres (autoguardado)
+    checklist = Column(Text)            # JSON: [{"texto":..,"done":bool}]
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
+
+
+class ObligacionEvento(Base):
+    """Comentarios, actividad (historial) y archivos de una obligación (página Notion)."""
+    __tablename__ = "obligacion_eventos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    obligacion_id = Column(Integer, ForeignKey("obligaciones.id"), index=True, nullable=False)
+    tipo = Column(String(20))           # comentario | actividad | archivo
+    texto = Column(Text)
+    autor = Column(String(120))
+    archivo_nombre = Column(String(300))
+    archivo_path = Column(String(500))
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Cronograma(Base):
@@ -227,6 +243,11 @@ def _migrate_columns():
                 for col, tipo in nuevas.items():
                     if col not in ecols:
                         conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col} {tipo}"))
+            if "obligaciones" in tables:
+                ocols = {c["name"] for c in insp.get_columns("obligaciones")}
+                for col, tipo in {"observaciones": "TEXT", "checklist": "TEXT"}.items():
+                    if col not in ocols:
+                        conn.execute(text(f"ALTER TABLE obligaciones ADD COLUMN {col} {tipo}"))
             if "configuraciones" in tables:
                 ccols = {c["name"] for c in insp.get_columns("configuraciones")}
                 cnuevas = {

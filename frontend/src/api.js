@@ -133,6 +133,43 @@ export async function apiDeleteObligacion(id) {
   return req(`/api/obligaciones/${id}`, { method: 'DELETE' })
 }
 
+export async function apiObligacionDetalle(id) {
+  return req(`/api/obligaciones/${id}/detalle`)
+}
+
+export async function apiAddComentario(id, texto) {
+  return req(`/api/obligaciones/${id}/comentario`, { method: 'POST', body: { texto } })
+}
+
+export async function apiChatObligacion(id, pregunta, historial) {
+  return req(`/api/obligaciones/${id}/chat`, { method: 'POST', body: { pregunta, historial } })
+}
+
+export async function apiUploadArchivo(id, file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/obligaciones/${id}/archivo`, {
+    method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'No se pudo subir el archivo')
+  return data
+}
+
+export async function apiDownloadArchivo(obligacionId, eventoId, nombre) {
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/obligaciones/${obligacionId}/archivo/${eventoId}`, {
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+  })
+  if (!res.ok) throw new Error('No se pudo descargar')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = nombre || 'archivo'; a.click()
+  URL.revokeObjectURL(url)
+}
+
 export async function apiAnalizarDocumento(file) {
   const fd = new FormData()
   fd.append('file', file)

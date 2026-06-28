@@ -18,10 +18,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import asyncio
+import json
 from datetime import date
 from app.database import (
     get_db, init_db, User, Empresa, Notification, SyncLog,
-    Programacion, Configuracion, Obligacion,
+    Programacion, Configuracion, Obligacion, ObligacionEvento,
 )
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
@@ -31,6 +32,7 @@ from app.ruc_lookup import lookup_ruc
 from app.cronograma import get_vencimientos
 from app.obligaciones import (
     generar_desde_cronograma, obligacion_dict, ESTADOS, ESTADOS_LABEL,
+    evento_dict, log_actividad, chat_obligacion,
 )
 from app.document_ai import analizar_documento
 from app.scraper import get_demo_notifications
@@ -137,6 +139,17 @@ class ObligacionUpdate(BaseModel):
     responsable: Optional[str] = None
     monto: Optional[str] = None
     fecha_vencimiento: Optional[str] = None
+    observaciones: Optional[str] = None
+    checklist: Optional[list] = None
+
+
+class ComentarioReq(BaseModel):
+    texto: str
+
+
+class ChatReq(BaseModel):
+    pregunta: str
+    historial: Optional[list] = None
 
 
 # ── Startup ────────────────────────────────────────────────────────────────
@@ -506,6 +519,8 @@ async def create_obligacion(
     db.add(o)
     db.commit()
     db.refresh(o)
+    log_actividad(db, o.id, f"Obligación creada ({o.origen})", autor=user.nombre or user.username)
+    db.commit()
     nombres = _empresa_nombre_map(user, db)
     return {"success": True, "obligacion": obligacion_dict(o, nombres.get(o.empresa_id, ""))}
 
@@ -523,9 +538,12 @@ async def update_obligacion(
     if not o:
         raise HTTPException(404, "Obligación no encontrada.")
 
+    autor = user.nombre or user.username
     if req.estado is not None:
         if req.estado not in ESTADOS:
             raise HTTPException(400, "Estado inválido.")
+        if req.estado != o.estado:
+            log_actividad(db, o.id, f"Estado: {ESTADOS_LABEL.get(o.estado, o.estado)} → {ESTADOS_LABEL.get(req.estado, req.estado)}", autor)
         o.estado = req.estado
         o.completed_at = datetime.utcnow() if req.estado in ("pagado", "declarado", "archivado") else None
     if req.prioridad is not None and req.prioridad in ("alta", "media", "baja"):
@@ -538,6 +556,12 @@ async def update_obligacion(
         o.responsable = req.responsable.strip()
     if req.monto is not None:
         o.monto = req.monto.strip()
+    if req.observaciones is not None:
+        o.observaciones = req.observaciones
+    if req.checklist is not None:
+        limpio = [{"texto": str(i.get("texto", "")).strip(), "done": bool(i.get("done"))}
+                  for i in req.checklist if str(i.get("texto", "")).strip()]
+        o.checklist = json.dumps(limpio, ensure_ascii=False)
     if req.fecha_vencimiento:
         try:
             o.fecha_vencimiento = datetime.fromisoformat(req.fecha_vencimiento)
@@ -561,9 +585,132 @@ async def delete_obligacion(
     ).first()
     if not o:
         raise HTTPException(404, "Obligación no encontrada.")
+    db.query(ObligacionEvento).filter(ObligacionEvento.obligacion_id == o.id).delete()
     db.delete(o)
     db.commit()
     return {"success": True}
+
+
+# ── Página tipo Notion: detalle, comentarios, archivos, chat ─────────────────
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/data/uploads")
+
+
+def _get_owned_obligacion(obligacion_id: int, user: User, db: Session) -> Obligacion:
+    o = db.query(Obligacion).filter(
+        Obligacion.id == obligacion_id, Obligacion.user_id == user.id
+    ).first()
+    if not o:
+        raise HTTPException(404, "Obligación no encontrada.")
+    return o
+
+
+@app.get("/api/obligaciones/{obligacion_id}/detalle")
+async def obligacion_detalle(
+    obligacion_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = _get_owned_obligacion(obligacion_id, user, db)
+    nombres = _empresa_nombre_map(user, db)
+    eventos = (
+        db.query(ObligacionEvento)
+        .filter(ObligacionEvento.obligacion_id == o.id)
+        .order_by(ObligacionEvento.created_at.desc())
+        .all()
+    )
+    return {
+        "obligacion": obligacion_dict(o, nombres.get(o.empresa_id, "")),
+        "comentarios": [evento_dict(e) for e in eventos if e.tipo == "comentario"],
+        "actividad": [evento_dict(e) for e in eventos if e.tipo == "actividad"],
+        "archivos": [evento_dict(e) for e in eventos if e.tipo == "archivo"],
+    }
+
+
+@app.post("/api/obligaciones/{obligacion_id}/comentario")
+async def add_comentario(
+    obligacion_id: int,
+    req: ComentarioReq,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = _get_owned_obligacion(obligacion_id, user, db)
+    if not req.texto.strip():
+        raise HTTPException(400, "El comentario no puede estar vacío.")
+    e = ObligacionEvento(obligacion_id=o.id, tipo="comentario",
+                         texto=req.texto.strip(), autor=user.nombre or user.username)
+    db.add(e)
+    db.commit()
+    db.refresh(e)
+    return {"success": True, "comentario": evento_dict(e)}
+
+
+@app.post("/api/obligaciones/{obligacion_id}/archivo")
+async def upload_archivo(
+    obligacion_id: int,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = _get_owned_obligacion(obligacion_id, user, db)
+    contenido = await file.read()
+    if len(contenido) > 15 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera los 15 MB.")
+    carpeta = os.path.join(UPLOAD_DIR, str(o.id))
+    try:
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = (file.filename or "archivo")[:200]
+        ruta = os.path.join(carpeta, f"{uuid.uuid4().hex[:8]}_{nombre}")
+        with open(ruta, "wb") as f:
+            f.write(contenido)
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo guardar el archivo: {str(e)[:120]}")
+    ev = ObligacionEvento(obligacion_id=o.id, tipo="archivo", texto=nombre,
+                          autor=user.nombre or user.username,
+                          archivo_nombre=nombre, archivo_path=ruta)
+    db.add(ev)
+    log_actividad(db, o.id, f"Adjuntó archivo: {nombre}", user.nombre or user.username)
+    db.commit()
+    db.refresh(ev)
+    return {"success": True, "archivo": evento_dict(ev)}
+
+
+@app.get("/api/obligaciones/{obligacion_id}/archivo/{evento_id}")
+async def download_archivo(
+    obligacion_id: int,
+    evento_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_owned_obligacion(obligacion_id, user, db)
+    ev = db.query(ObligacionEvento).filter(
+        ObligacionEvento.id == evento_id,
+        ObligacionEvento.obligacion_id == obligacion_id,
+        ObligacionEvento.tipo == "archivo",
+    ).first()
+    if not ev or not ev.archivo_path or not os.path.exists(ev.archivo_path):
+        raise HTTPException(404, "Archivo no encontrado.")
+    with open(ev.archivo_path, "rb") as f:
+        data = f.read()
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{ev.archivo_nombre}"'},
+    )
+
+
+@app.post("/api/obligaciones/{obligacion_id}/chat")
+async def chat_obligacion_endpoint(
+    obligacion_id: int,
+    req: ChatReq,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = _get_owned_obligacion(obligacion_id, user, db)
+    if not req.pregunta.strip():
+        raise HTTPException(400, "Escribe una pregunta.")
+    nombres = _empresa_nombre_map(user, db)
+    respuesta = await chat_obligacion(o, nombres.get(o.empresa_id, ""), req.pregunta.strip(), req.historial)
+    return {"success": True, "respuesta": respuesta}
 
 
 # ── IA de Documentos (Fase 3) ────────────────────────────────────────────────
