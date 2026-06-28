@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import ConfirmModal from './ConfirmModal'
 import {
   apiListEmpresas, apiLookupRuc, apiCreateEmpresa, apiDeleteEmpresa,
 } from '../api'
@@ -125,6 +126,8 @@ export default function Empresas({ onOpenEmpresa }) {
   const [max, setMax] = useState(10)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [confirmar, setConfirmar] = useState(null)
+  const [borrando, setBorrando] = useState(false)
 
   async function load() {
     try {
@@ -140,11 +143,22 @@ export default function Empresas({ onOpenEmpresa }) {
 
   useEffect(() => { load() }, [])
 
-  async function handleDelete(id, e) {
+  function handleDelete(empresa, e) {
     e.stopPropagation()
-    if (!confirm('¿Eliminar esta empresa? Se borrarán sus notificaciones guardadas.')) return
-    await apiDeleteEmpresa(id)
-    setEmpresas((prev) => prev.filter((x) => x.id !== id))
+    setConfirmar(empresa)
+  }
+  async function confirmarEliminar() {
+    if (!confirmar) return
+    setBorrando(true)
+    try {
+      await apiDeleteEmpresa(confirmar.id)
+      setEmpresas((prev) => prev.filter((x) => x.id !== confirmar.id))
+      setConfirmar(null)
+    } catch (err) {
+      alert(`⚠️ ${err.message}`)
+    } finally {
+      setBorrando(false)
+    }
   }
 
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -196,7 +210,7 @@ export default function Empresas({ onOpenEmpresa }) {
                 <div className="empresa-cell-muted">{fmtDate(e.last_sync)}</div>
                 <div className="empresa-actions">
                   <button className="btn-extraer" onClick={() => onOpenEmpresa(e)}>⬇ Extraer</button>
-                  <button className="btn-icon" title="Eliminar" onClick={(ev) => handleDelete(e.id, ev)}>🗑️</button>
+                  <button className="btn-icon" title="Eliminar" onClick={(ev) => handleDelete(e, ev)}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -216,6 +230,17 @@ export default function Empresas({ onOpenEmpresa }) {
         <AddEmpresaModal
           onClose={() => setShowModal(false)}
           onCreated={(emp) => { setEmpresas((p) => [...p, emp]); setShowModal(false) }}
+        />
+      )}
+      {confirmar && (
+        <ConfirmModal
+          icon="🏢"
+          title="Eliminar empresa"
+          message="Se eliminará la empresa y sus notificaciones guardadas. Esta acción no se puede deshacer."
+          detail={confirmar.alias || confirmar.razon_social || confirmar.ruc}
+          loading={borrando}
+          onCancel={() => setConfirmar(null)}
+          onConfirm={confirmarEliminar}
         />
       )}
     </div>

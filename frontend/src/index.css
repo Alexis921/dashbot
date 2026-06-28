@@ -729,6 +729,26 @@ select.form-input { cursor: pointer; }
 .doc-sug-actions .btn-accent, .doc-sug-actions .btn-secondary { flex: 1; }
 .doc-sug-foot { font-size: 11px; color: var(--gray-600); margin-top: 10px; line-height: 1.5; }
 
+/* ── MODAL DE CONFIRMACIÓN ── */
+.cm-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px; animation: cm-fade .12s ease; }
+@keyframes cm-fade { from { opacity: 0; } to { opacity: 1; } }
+.cm-modal { background: var(--white); border-radius: 14px; width: 100%; max-width: 380px; padding: 26px 24px 20px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,.25); animation: cm-pop .15s ease; }
+@keyframes cm-pop { from { transform: scale(.94); opacity: .6; } to { transform: scale(1); opacity: 1; } }
+.cm-icon { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; background: var(--gray-100); }
+.cm-icon.danger { background: #fee2e2; }
+.cm-title { font-size: 17px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.cm-msg { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+.cm-detail { font-size: 13px; font-weight: 600; color: var(--gray-800); background: var(--gray-50); border-radius: 8px; padding: 8px 12px; margin-top: 12px; }
+.cm-actions { display: flex; gap: 10px; margin-top: 22px; }
+.cm-btn { flex: 1; padding: 11px; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
+.cm-btn:disabled { opacity: .6; cursor: not-allowed; }
+.cm-cancel { background: var(--white); color: var(--gray-700,#475569); border: 1.5px solid var(--gray-200); }
+.cm-cancel:hover { background: var(--gray-50); }
+.cm-danger { background: #dc2626; color: white; }
+.cm-danger:hover { background: #b91c1c; }
+.cm-confirm { background: var(--navy); color: white; }
+.cm-confirm:hover { background: var(--navy-dark); }
+
 /* ── PÁGINA OBLIGACIÓN (estilo Notion) ── */
 .op-modal { background: var(--white); border-radius: 14px; width: 100%; max-width: 1040px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; }
 .op-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid var(--gray-100); }

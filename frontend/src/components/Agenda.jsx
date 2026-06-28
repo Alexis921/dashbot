@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import EscanearDoc from './EscanearDoc'
 import ObligacionPage from './ObligacionPage'
+import ConfirmModal from './ConfirmModal'
 import {
   apiListObligaciones, apiListEmpresas, apiGenerarObligaciones,
   apiUpdateObligacion, apiCreateObligacion, apiDeleteObligacion,
@@ -138,6 +139,8 @@ export default function Agenda() {
   const [showEscanear, setShowEscanear] = useState(false)
   const [detalle, setDetalle] = useState(null)
   const [generando, setGenerando] = useState(false)
+  const [confirmar, setConfirmar] = useState(null)   // obligación a eliminar
+  const [borrando, setBorrando] = useState(false)
 
   const load = useCallback(async () => {
     const d = await apiListObligaciones(filtroEmp)
@@ -154,11 +157,19 @@ export default function Agenda() {
     setObligaciones((prev) => prev.map((o) => o.id === id ? { ...o, estado } : o))
     try { await apiUpdateObligacion(id, { estado }) } catch { load() }
   }
-  async function eliminar(id) {
-    if (!confirm('¿Eliminar esta obligación?')) return
-    await apiDeleteObligacion(id)
-    setObligaciones((prev) => prev.filter((o) => o.id !== id))
-    setDetalle(null)
+  async function confirmarEliminar() {
+    if (!confirmar) return
+    setBorrando(true)
+    try {
+      await apiDeleteObligacion(confirmar.id)
+      setObligaciones((prev) => prev.filter((o) => o.id !== confirmar.id))
+      setConfirmar(null)
+      setDetalle(null)
+    } catch (e) {
+      alert(`⚠️ ${e.message}`)
+    } finally {
+      setBorrando(false)
+    }
   }
   async function generar() {
     const empId = filtroEmp || empresas[0]?.id
@@ -256,7 +267,17 @@ export default function Agenda() {
       {detalle && <ObligacionPage obligacionId={detalle.id} estados={estados}
         onClose={() => setDetalle(null)}
         onChanged={(o) => setObligaciones((prev) => prev.map((x) => x.id === o.id ? o : x))}
-        onDelete={() => eliminar(detalle.id)} />}
+        onDelete={() => setConfirmar(detalle)} />}
+      {confirmar && (
+        <ConfirmModal
+          title="Eliminar obligación"
+          message="¿Seguro que deseas eliminar esta obligación? Esta acción no se puede deshacer."
+          detail={confirmar.titulo}
+          loading={borrando}
+          onCancel={() => setConfirmar(null)}
+          onConfirm={confirmarEliminar}
+        />
+      )}
     </div>
   )
 }
