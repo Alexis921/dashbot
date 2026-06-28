@@ -67,12 +67,10 @@ async def run_recordatorios() -> dict:
     procesados = []
     try:
         hoy = date.today()
-        configs = db.query(Configuracion).filter(Configuracion.recordatorios_activo == True).all()  # noqa: E712
+        # Todos los usuarios con configuración (tiene las credenciales de envío)
+        configs = db.query(Configuracion).all()
         for cfg in configs:
-            offsets = _parse_offsets(cfg.recordatorio_dias)
-            if not offsets:
-                continue
-            max_off = max(offsets)
+            global_offsets = _parse_offsets(cfg.recordatorio_dias) if cfg.recordatorios_activo else []
             nombres = {e.id: (e.alias or e.razon_social or f"RUC {e.ruc}")
                        for e in db.query(Empresa).filter(Empresa.user_id == cfg.user_id).all()}
 
@@ -83,6 +81,21 @@ async def run_recordatorios() -> dict:
             ).all()
 
             for o in obligaciones:
+                # Resolver: recordatorio PROPIO de la obligación o el global
+                propio = (o.recordatorio_dias or "").strip()
+                if propio:
+                    offsets = _parse_offsets(propio)
+                    usar_wsp = bool(o.recordatorio_wsp)
+                    usar_email = bool(o.recordatorio_email)
+                elif global_offsets:
+                    offsets = global_offsets
+                    usar_wsp = cfg.recordatorio_wsp
+                    usar_email = cfg.recordatorio_email
+                else:
+                    continue
+                if not offsets:
+                    continue
+                max_off = max(offsets)
                 dias = (o.fecha_vencimiento.date() - hoy).days
                 if dias < 0 or dias > max_off:
                     continue
@@ -96,10 +109,10 @@ async def run_recordatorios() -> dict:
                 enviar_off = pendientes[0]  # el umbral más cercano a vencer
 
                 empresa = nombres.get(o.empresa_id, "Tu empresa")
-                if cfg.recordatorio_wsp and cfg.whatsapp_numero and cfg.whatsapp_apikey:
+                if usar_wsp and cfg.whatsapp_numero and cfg.whatsapp_apikey:
                     await send_whatsapp(cfg.whatsapp_numero, cfg.whatsapp_apikey, _wsp_msg(empresa, o, dias))
                 dest = cfg.recordatorio_email_dest
-                if cfg.recordatorio_email and dest:
+                if usar_email and dest:
                     await send_simple_email(
                         dest, f"⏰ Recordatorio: {o.titulo}", _email_html(empresa, o, dias))
 

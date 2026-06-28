@@ -162,6 +162,10 @@ class Obligacion(Base):
 
     observaciones = Column(Text)        # notas libres (autoguardado)
     checklist = Column(Text)            # JSON: [{"texto":..,"done":bool}]
+    # Recordatorio propio de esta obligación (si recordatorio_dias != "", anula el global)
+    recordatorio_dias = Column(String(40), default="")   # ej "1" o "3,1,0"
+    recordatorio_wsp = Column(Boolean, default=True)
+    recordatorio_email = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
@@ -245,7 +249,13 @@ def _migrate_columns():
                         conn.execute(text(f"ALTER TABLE empresas ADD COLUMN {col} {tipo}"))
             if "obligaciones" in tables:
                 ocols = {c["name"] for c in insp.get_columns("obligaciones")}
-                for col, tipo in {"observaciones": "TEXT", "checklist": "TEXT"}.items():
+                onuevas = {
+                    "observaciones": "TEXT", "checklist": "TEXT",
+                    "recordatorio_dias": "VARCHAR(40) DEFAULT ''",
+                    "recordatorio_wsp": "BOOLEAN DEFAULT 1",
+                    "recordatorio_email": "BOOLEAN DEFAULT 0",
+                }
+                for col, tipo in onuevas.items():
                     if col not in ocols:
                         conn.execute(text(f"ALTER TABLE obligaciones ADD COLUMN {col} {tipo}"))
             if "configuraciones" in tables:

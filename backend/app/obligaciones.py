@@ -92,6 +92,9 @@ def obligacion_dict(o: Obligacion, empresa_nombre: str = "") -> dict:
         "dias_restantes": dias,
         "observaciones": o.observaciones or "",
         "checklist": _load_checklist(o.checklist),
+        "recordatorio_dias": o.recordatorio_dias or "",
+        "recordatorio_wsp": o.recordatorio_wsp if o.recordatorio_wsp is not None else True,
+        "recordatorio_email": bool(o.recordatorio_email),
         "created_at": o.created_at.isoformat() if o.created_at else None,
     }
 

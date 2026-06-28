@@ -63,6 +63,12 @@ export default function ObligacionPage({ obligacionId, estados, onClose, onChang
     setActividad((a) => [{ id: Date.now(), tipo: 'actividad', texto: `Estado: ${estados.find(s => s.key === d.estado)?.label} → ${estados.find(s => s.key === estado)?.label}`, autor: 'Tú', created_at: new Date().toISOString() }, ...a])
   }
 
+  function toggleRecDia(ds) {
+    const cur = new Set((d.recordatorio_dias || '').split(',').map((s) => s.trim()).filter(Boolean))
+    cur.has(ds) ? cur.delete(ds) : cur.add(ds)
+    patch({ recordatorio_dias: [...cur].map(Number).sort((a, b) => b - a).join(',') })
+  }
+
   async function addComentario() {
     if (!nuevoComent.trim()) return
     const r = await apiAddComentario(obligacionId, nuevoComent.trim())
@@ -148,6 +154,25 @@ export default function ObligacionPage({ obligacionId, estados, onClose, onChang
                   onKeyDown={(e) => e.key === 'Enter' && addCheck()} placeholder="+ Agregar ítem" />
                 <button onClick={addCheck}>Agregar</button>
               </div>
+            </div>
+
+            <div className="op-section">
+              <div className="op-section-h">🔔 Recordatorio de esta obligación</div>
+              <div className="op-rec-hint">Avísame antes de que venza esta tarea. Si no eliges nada, usa tu configuración general.</div>
+              <div className="rec-dias" style={{ marginBottom: 10 }}>
+                {[15, 7, 3, 1, 0].map((n) => {
+                  const sel = (d.recordatorio_dias || '').split(',').map((s) => s.trim()).includes(String(n))
+                  return <button key={n} type="button" className={`rec-chip ${sel ? 'on' : ''}`} onClick={() => toggleRecDia(String(n))}>
+                    {n === 0 ? 'El mismo día' : `${n} día${n > 1 ? 's' : ''} antes`}
+                  </button>
+                })}
+              </div>
+              <div className="op-rec-canales">
+                <label className="rec-canal"><input type="checkbox" checked={d.recordatorio_wsp} onChange={(e) => patch({ recordatorio_wsp: e.target.checked })} /><span>💬 WhatsApp</span></label>
+                <label className="rec-canal"><input type="checkbox" checked={d.recordatorio_email} onChange={(e) => patch({ recordatorio_email: e.target.checked })} /><span>📧 Correo</span></label>
+              </div>
+              {(d.recordatorio_dias || '').trim() && <div className="op-rec-ok">✓ Recordatorio activo para esta tarea por {[d.recordatorio_wsp && 'WhatsApp', d.recordatorio_email && 'correo'].filter(Boolean).join(' y ') || '(elige un canal)'}.</div>}
+              <div className="op-rec-foot">Usa el número/correo de <strong>Configuración</strong>. Configúralos ahí una vez.</div>
             </div>
 
             <div className="op-section">

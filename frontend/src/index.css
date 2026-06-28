@@ -784,6 +784,11 @@ select.form-input { cursor: pointer; }
 .op-archivo:hover { border-color: var(--navy); }
 .op-vacio { font-size: 12.5px; color: var(--gray-600); padding: 12px 0; }
 
+.op-rec-hint { font-size: 12px; color: var(--gray-600); margin-bottom: 10px; line-height: 1.5; }
+.op-rec-canales { display: flex; gap: 18px; margin-bottom: 8px; }
+.op-rec-ok { font-size: 12px; color: var(--green-dark); background: var(--green-light); padding: 7px 12px; border-radius: 8px; margin-top: 6px; }
+.op-rec-foot { font-size: 11px; color: var(--gray-600); margin-top: 8px; }
+
 .op-chat { border-left: 1px solid var(--gray-100); display: flex; flex-direction: column; background: var(--gray-50); }
 .op-chat-h { padding: 14px 18px; font-size: 13px; font-weight: 700; color: var(--navy); border-bottom: 1px solid var(--gray-100); }
 .op-chat-msgs { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }

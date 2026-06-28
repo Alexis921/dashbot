@@ -141,6 +141,9 @@ class ObligacionUpdate(BaseModel):
     fecha_vencimiento: Optional[str] = None
     observaciones: Optional[str] = None
     checklist: Optional[list] = None
+    recordatorio_dias: Optional[str] = None
+    recordatorio_wsp: Optional[bool] = None
+    recordatorio_email: Optional[bool] = None
 
 
 class ComentarioReq(BaseModel):
@@ -562,6 +565,12 @@ async def update_obligacion(
         limpio = [{"texto": str(i.get("texto", "")).strip(), "done": bool(i.get("done"))}
                   for i in req.checklist if str(i.get("texto", "")).strip()]
         o.checklist = json.dumps(limpio, ensure_ascii=False)
+    if req.recordatorio_dias is not None:
+        o.recordatorio_dias = req.recordatorio_dias.strip()
+    if req.recordatorio_wsp is not None:
+        o.recordatorio_wsp = req.recordatorio_wsp
+    if req.recordatorio_email is not None:
+        o.recordatorio_email = req.recordatorio_email
     if req.fecha_vencimiento:
         try:
             o.fecha_vencimiento = datetime.fromisoformat(req.fecha_vencimiento)
