@@ -65,6 +65,10 @@ export async function apiDeleteEmpresa(id) {
   return req(`/api/empresas/${id}`, { method: 'DELETE' })
 }
 
+export async function apiUpdateEmpresa(id, data) {
+  return req(`/api/empresas/${id}`, { method: 'PUT', body: data })
+}
+
 export async function apiSyncRuc(id) {
   return req(`/api/empresas/${id}/sync-ruc`, { method: 'POST' })
 }

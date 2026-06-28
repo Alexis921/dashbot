@@ -36,6 +36,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     plan = Column(String(50), default="free")
     max_empresas = Column(Integer, default=10)
+    terminos_aceptados = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     empresas = relationship("Empresa", back_populates="user", cascade="all, delete-orphan")
@@ -230,6 +231,10 @@ def _migrate_columns():
         insp = inspect(engine)
         tables = insp.get_table_names()
         with engine.begin() as conn:
+            if "users" in tables:
+                ucols = {c["name"] for c in insp.get_columns("users")}
+                if "terminos_aceptados" not in ucols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN terminos_aceptados BOOLEAN DEFAULT 0"))
             if "notifications" in tables:
                 cols = {c["name"] for c in insp.get_columns("notifications")}
                 if "empresa_id" not in cols:

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import ConfirmModal from './ConfirmModal'
 import {
-  apiListEmpresas, apiLookupRuc, apiCreateEmpresa, apiDeleteEmpresa,
+  apiListEmpresas, apiLookupRuc, apiCreateEmpresa, apiDeleteEmpresa, apiUpdateEmpresa,
 } from '../api'
 
 function EstadoBadge({ estado }) {
@@ -18,12 +18,13 @@ function EstadoBadge({ estado }) {
   )
 }
 
-function AddEmpresaModal({ onClose, onCreated }) {
+function AddEmpresaModal({ onClose, onCreated, terminosAceptados }) {
   const [form, setForm] = useState({
     ruc: '', razon_social: '', alias: '', sol_usuario: '', sol_password: '',
   })
   const [lookupState, setLookupState] = useState('') // '', 'loading', 'ok', 'fail'
   const [showPass, setShowPass] = useState(false)
+  const [acepto, setAcepto] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -51,9 +52,10 @@ function AddEmpresaModal({ onClose, onCreated }) {
     if (form.ruc.length !== 11 || !/^\d+$/.test(form.ruc)) return setError('El RUC debe tener 11 dígitos.')
     if (!form.sol_usuario.trim()) return setError('Ingresa el usuario SOL.')
     if (!form.sol_password.trim()) return setError('Ingresa la clave SOL.')
+    if (!terminosAceptados && !acepto) return setError('Debes aceptar los términos y condiciones.')
     setSaving(true)
     try {
-      const data = await apiCreateEmpresa(form)
+      const data = await apiCreateEmpresa({ ...form, acepto_terminos: acepto })
       onCreated(data.empresa)
     } catch (err) {
       setError(err.message)
@@ -109,10 +111,95 @@ function AddEmpresaModal({ onClose, onCreated }) {
             </div>
           </div>
 
+          {!terminosAceptados && (
+            <label className="terminos-check">
+              <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} />
+              <span>Acepto los <a href="/terminos" target="_blank" rel="noreferrer">términos y condiciones</a> y autorizo a Dashbot a usar mis credenciales SOL (cifradas) únicamente para leer mi buzón SUNAT en mi nombre.</span>
+            </label>
+          )}
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="btn-accent" disabled={saving || (!terminosAceptados && !acepto)}>
+              {saving ? '⏳ Guardando...' : '💾 Agregar empresa'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function EditEmpresaModal({ empresa, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    razon_social: empresa.razon_social || '', alias: empresa.alias || '',
+    sol_usuario: empresa.sol_usuario || '', sol_password: '',
+  })
+  const [showPass, setShowPass] = useState(false)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    if (!form.sol_usuario.trim()) return setError('El usuario SOL es obligatorio.')
+    setSaving(true)
+    try {
+      const data = await apiUpdateEmpresa(empresa.id, form)
+      onSaved(data.empresa)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+        <h3>✏️ Editar empresa</h3>
+        {error && <div className="error-msg" style={{ marginBottom: 12 }}>⚠️ {error}</div>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label className="form-label">RUC</label>
+            <input className="form-input" type="text" value={empresa.ruc} disabled
+              style={{ background: 'var(--gray-50)', color: 'var(--gray-600)' }} />
+            <div className="hint">El RUC no se puede cambiar.</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Razón social</label>
+            <input className="form-input" type="text" value={form.razon_social} onChange={set('razon_social')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Nombre / Alias <span style={{ fontWeight: 400, color: '#94a3b8' }}>(opcional)</span></label>
+            <input className="form-input" type="text" value={form.alias} onChange={set('alias')} placeholder="Ej: Cliente principal" />
+          </div>
+
+          <div style={{ borderTop: '1px solid #e2e8f0', margin: '14px 0', paddingTop: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#1B3A6B', marginBottom: 10 }}>🔐 Credenciales SUNAT SOL</div>
+            <div className="form-group">
+              <label className="form-label">Usuario SOL *</label>
+              <input className="form-input" type="text" value={form.sol_usuario} onChange={set('sol_usuario')} autoComplete="off" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Nueva clave SOL</label>
+              <div style={{ position: 'relative' }}>
+                <input className="form-input" type={showPass ? 'text' : 'password'} value={form.sol_password}
+                  onChange={set('sol_password')} placeholder="Déjala vacía para mantener la actual" autoComplete="new-password" />
+                <button type="button" onClick={() => setShowPass((s) => !s)}
+                  style={{ position: 'absolute', right: 10, top: 8, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>
+                  {showPass ? '🙈' : '👁️'}
+                </button>
+              </div>
+              <div className="hint">Si el cliente cambió su clave SOL, escríbela aquí para actualizarla.</div>
+            </div>
+          </div>
+
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
             <button type="submit" className="btn-accent" disabled={saving}>
-              {saving ? '⏳ Guardando...' : '💾 Agregar empresa'}
+              {saving ? '⏳ Guardando...' : '💾 Guardar cambios'}
             </button>
           </div>
         </form>
@@ -126,6 +213,8 @@ export default function Empresas({ onOpenEmpresa }) {
   const [max, setMax] = useState(10)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editar, setEditar] = useState(null)
+  const [terminosAceptados, setTerminosAceptados] = useState(true)
   const [confirmar, setConfirmar] = useState(null)
   const [borrando, setBorrando] = useState(false)
 
@@ -134,6 +223,7 @@ export default function Empresas({ onOpenEmpresa }) {
       const data = await apiListEmpresas()
       setEmpresas(data.empresas || [])
       setMax(data.max || 10)
+      setTerminosAceptados(data.terminos_aceptados ?? true)
     } catch (_) {
       // sesión expirada se maneja en App
     } finally {
@@ -198,7 +288,7 @@ export default function Empresas({ onOpenEmpresa }) {
             </div>
             {empresas.map((e) => (
               <div className="empresas-row" key={e.id}>
-                <div className="empresa-cell-name">
+                <div className="empresa-cell-name empresa-clickable" onClick={() => setEditar(e)} title="Ver / editar credenciales">
                   <div className="empresa-avatar">{(e.razon_social || e.ruc)[0]}</div>
                   <div>
                     <div className="empresa-name">{e.alias || e.razon_social || 'Sin nombre'}</div>
@@ -210,6 +300,7 @@ export default function Empresas({ onOpenEmpresa }) {
                 <div className="empresa-cell-muted">{fmtDate(e.last_sync)}</div>
                 <div className="empresa-actions">
                   <button className="btn-extraer" onClick={() => onOpenEmpresa(e)}>⬇ Extraer</button>
+                  <button className="btn-icon" title="Editar" onClick={() => setEditar(e)}>✏️</button>
                   <button className="btn-icon" title="Eliminar" onClick={(ev) => handleDelete(e, ev)}>🗑️</button>
                 </div>
               </div>
@@ -228,8 +319,16 @@ export default function Empresas({ onOpenEmpresa }) {
 
       {showModal && (
         <AddEmpresaModal
+          terminosAceptados={terminosAceptados}
           onClose={() => setShowModal(false)}
-          onCreated={(emp) => { setEmpresas((p) => [...p, emp]); setShowModal(false) }}
+          onCreated={(emp) => { setEmpresas((p) => [...p, emp]); setTerminosAceptados(true); setShowModal(false) }}
+        />
+      )}
+      {editar && (
+        <EditEmpresaModal
+          empresa={editar}
+          onClose={() => setEditar(null)}
+          onSaved={(emp) => { setEmpresas((p) => p.map((x) => x.id === emp.id ? emp : x)); setEditar(null) }}
         />
       )}
       {confirmar && (

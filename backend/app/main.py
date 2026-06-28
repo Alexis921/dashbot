@@ -81,6 +81,14 @@ class EmpresaCreate(BaseModel):
     alias: Optional[str] = ""
     sol_usuario: str
     sol_password: str
+    acepto_terminos: bool = False
+
+
+class EmpresaUpdate(BaseModel):
+    razon_social: Optional[str] = None
+    alias: Optional[str] = None
+    sol_usuario: Optional[str] = None
+    sol_password: Optional[str] = None   # vacío = no cambiar
 
 
 class InterpretRequest(BaseModel):
@@ -173,6 +181,7 @@ def _user_dict(u: User) -> dict:
     return {
         "id": u.id, "nombre": u.nombre, "apellido": u.apellido,
         "username": u.username, "plan": u.plan, "max_empresas": u.max_empresas,
+        "terminos_aceptados": bool(u.terminos_aceptados),
     }
 
 
@@ -242,6 +251,7 @@ async def list_empresas(user: User = Depends(get_current_user), db: Session = De
         "empresas": [_empresa_dict(e) for e in empresas],
         "count": len(empresas),
         "max": user.max_empresas,
+        "terminos_aceptados": bool(user.terminos_aceptados),
     }
 
 
@@ -255,6 +265,12 @@ async def create_empresa(
         raise HTTPException(400, "RUC inválido. Debe tener 11 dígitos.")
     if not req.sol_usuario.strip() or not req.sol_password.strip():
         raise HTTPException(400, "Usuario y clave SOL son obligatorios.")
+
+    # Aceptación de términos (solo la primera vez)
+    if not user.terminos_aceptados and not req.acepto_terminos:
+        raise HTTPException(400, "Debes aceptar los términos y condiciones para continuar.")
+    if not user.terminos_aceptados and req.acepto_terminos:
+        user.terminos_aceptados = True
 
     count = db.query(Empresa).filter(Empresa.user_id == user.id).count()
     if count >= user.max_empresas:
@@ -282,6 +298,35 @@ async def create_empresa(
         estado="pendiente",
     )
     db.add(empresa)
+    db.commit()
+    db.refresh(empresa)
+    return {"success": True, "empresa": _empresa_dict(empresa)}
+
+
+@app.put("/api/empresas/{empresa_id}")
+async def update_empresa(
+    empresa_id: int,
+    req: EmpresaUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Edita una empresa. La clave SOL solo se actualiza si se envía una nueva."""
+    empresa = db.query(Empresa).filter(
+        Empresa.id == empresa_id, Empresa.user_id == user.id
+    ).first()
+    if not empresa:
+        raise HTTPException(404, "Empresa no encontrada.")
+
+    if req.razon_social is not None:
+        empresa.razon_social = req.razon_social.strip()[:300]
+    if req.alias is not None:
+        empresa.alias = req.alias.strip()[:150]
+    if req.sol_usuario is not None and req.sol_usuario.strip():
+        empresa.sol_usuario = req.sol_usuario.strip()
+    if req.sol_password is not None and req.sol_password.strip():
+        empresa.sol_password_enc = encrypt_secret(req.sol_password)
+        empresa.estado = "pendiente"  # credenciales cambiadas → revalidar
+        _sunat_sessions.pop(empresa_id, None)
     db.commit()
     db.refresh(empresa)
     return {"success": True, "empresa": _empresa_dict(empresa)}
