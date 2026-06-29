@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ConfirmModal from './ConfirmModal'
 import {
   apiListColaboradores, apiListEmpresas, apiCreateColaborador,
-  apiUpdateColaborador, apiDeleteColaborador,
+  apiUpdateColaborador, apiDeleteColaborador, apiImportColaboradores, apiExportColaboradores,
 } from '../api'
 
 const VACIO = {
@@ -134,6 +134,8 @@ export default function Colaboradores({ onBack }) {
   const [modal, setModal] = useState(null)   // null | {} (nuevo) | colaborador (editar)
   const [confirmar, setConfirmar] = useState(null)
   const [borrando, setBorrando] = useState(false)
+  const [msg, setMsg] = useState('')
+  const fileRef = useRef(null)
 
   async function load() {
     setLoading(true)
@@ -142,6 +144,13 @@ export default function Colaboradores({ onBack }) {
       setColabs(d.colaboradores || [])
     } catch (_) {} finally { setLoading(false) }
   }
+  async function importar(e) {
+    const f = e.target.files?.[0]; if (!f) return
+    setMsg('Importando…')
+    try { const d = await apiImportColaboradores(filtro, f); setMsg(`✓ ${d.creados} colaborador(es) importados.`); await load() }
+    catch (err) { setMsg(`⚠️ ${err.message}`) } finally { if (fileRef.current) fileRef.current.value = '' }
+  }
+  async function exportar() { try { await apiExportColaboradores(filtro) } catch (e) { alert(`⚠️ ${e.message}`) } }
   useEffect(() => { apiListEmpresas().then((d) => setEmpresas(d.empresas || [])).catch(() => {}) }, [])
   useEffect(() => { load() }, [filtro])
 
@@ -163,13 +172,17 @@ export default function Colaboradores({ onBack }) {
         <button className="btn-accent" style={{ flex: 'none' }} onClick={() => setModal({})}>+ Nuevo colaborador</button>
       </div>
 
-      <div className="form-group" style={{ maxWidth: 320 }}>
-        <label className="form-label">Empresa</label>
-        <select className="form-input" value={filtro} onChange={(e) => setFiltro(Number(e.target.value))}>
+      <div className="pl-toolbar">
+        <select className="form-input" value={filtro} onChange={(e) => setFiltro(Number(e.target.value))} style={{ width: 240 }}>
           <option value={0}>Todas las empresas</option>
           {empresas.map((e) => <option key={e.id} value={e.id}>{e.alias || e.razon_social || e.ruc}</option>)}
         </select>
+        <div className="pl-actions">
+          <label className="btn-secondary pl-imp"><input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={importar} />📥 Importar Excel</label>
+          <button className="btn-secondary" onClick={exportar}>📤 Exportar Excel</button>
+        </div>
       </div>
+      {msg && <div className="pl-msg">{msg}</div>}
 
       {loading ? <div className="empresas-empty">Cargando...</div>
         : colabs.length === 0 ? (

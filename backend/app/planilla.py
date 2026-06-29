@@ -56,6 +56,18 @@ CUARTA_COLS = [
 ]
 
 
+COLAB_COLS = [
+    ("tipo_doc", "Tipo doc."), ("num_doc", "N° Documento"), ("ap_paterno", "Ap. paterno"),
+    ("ap_materno", "Ap. materno"), ("nombres", "Nombres"), ("fecha_nacimiento", "F. nacimiento"),
+    ("sexo", "Sexo"), ("nacionalidad", "Nacionalidad"), ("tipo_trabajador", "Tipo trabajador"),
+    ("regimen_laboral", "Régimen laboral"), ("tipo_contrato", "Tipo contrato"),
+    ("ocupacion", "Ocupación"), ("jornada", "Jornada"), ("fecha_ingreso", "F. ingreso"),
+    ("situacion", "Situación"), ("regimen_pensionario", "Pensión"), ("afp_nombre", "AFP"),
+    ("cuspp", "CUSPP"), ("regimen_salud", "Salud"), ("remuneracion", "Remuneración"),
+    ("tipo_pago", "Forma pago"), ("cci", "CCI"), ("email", "Correo"), ("telefono", "Teléfono"),
+]
+
+
 def exportar_excel(filas: list, cols: list, titulo: str, periodo: str) -> bytes:
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment

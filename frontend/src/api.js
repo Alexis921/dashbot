@@ -226,6 +226,34 @@ export async function apiUpdateColaborador(id, data) {
 export async function apiDeleteColaborador(id) {
   return req(`/api/colaboradores/${id}`, { method: 'DELETE' })
 }
+export async function apiImportColaboradores(empresaId, file) {
+  const fd = new FormData(); fd.append('file', file)
+  const t = getToken(); const p = empresaId ? `?empresa_id=${empresaId}` : ''
+  const res = await fetch(`${BASE}/api/colaboradores/import${p}`, { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd })
+  const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.detail || 'No se pudo importar'); return d
+}
+export async function apiExportColaboradores(empresaId) {
+  const t = getToken(); const p = empresaId ? `?empresa_id=${empresaId}` : ''
+  const res = await fetch(`${BASE}/api/colaboradores/export${p}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} })
+  if (!res.ok) throw new Error('No se pudo exportar')
+  const blob = await res.blob(); const url = URL.createObjectURL(blob)
+  const a = document.createElement('a'); a.href = url; a.download = 'colaboradores.xlsx'; a.click(); URL.revokeObjectURL(url)
+}
+
+// ── Equipo: Talento (eventos) ──────────────────────────────
+export async function apiListTalento(empresaId = 0, periodo = '', tipo = '') {
+  const p = new URLSearchParams(); if (empresaId) p.set('empresa_id', empresaId); if (periodo) p.set('periodo', periodo); if (tipo) p.set('tipo', tipo)
+  return req(`/api/talento/eventos?${p.toString()}`)
+}
+export async function apiCreateTalento(data) { return req('/api/talento/eventos', { method: 'POST', body: data }) }
+export async function apiUpdateTalento(id, data) { return req(`/api/talento/eventos/${id}`, { method: 'PUT', body: data }) }
+export async function apiDeleteTalento(id) { return req(`/api/talento/eventos/${id}`, { method: 'DELETE' }) }
+
+// ── Planilla: poblar desde colaboradores ───────────────────
+export async function apiPlanillaDesdeColaboradores(empresaId, periodo) {
+  const p = new URLSearchParams(); if (empresaId) p.set('empresa_id', empresaId); if (periodo) p.set('periodo', periodo)
+  return req(`/api/planilla/trabajadores/desde-colaboradores?${p.toString()}`, { method: 'POST' })
+}
 
 // ── Planilla (PLAME) ───────────────────────────────────────
 export async function apiListPlanilla(tipo, empresaId = 0, periodo = '') {

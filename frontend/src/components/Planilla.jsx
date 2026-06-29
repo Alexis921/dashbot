@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import ConfirmModal from './ConfirmModal'
 import {
   apiListPlanilla, apiCreatePlanilla, apiUpdatePlanilla, apiDeletePlanilla,
-  apiImportPlanilla, apiExportPlanilla, apiListEmpresas,
+  apiImportPlanilla, apiExportPlanilla, apiListEmpresas, apiPlanillaDesdeColaboradores,
 } from '../api'
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre']
@@ -161,6 +161,11 @@ export default function Planilla({ onBack }) {
   async function exportar() {
     try { await apiExportPlanilla(tab, filtroEmp, periodo) } catch (e) { alert(`⚠️ ${e.message}`) }
   }
+  async function desdeColaboradores() {
+    setMsg('Cargando colaboradores…')
+    try { const d = await apiPlanillaDesdeColaboradores(filtroEmp, periodo); setMsg(`✓ ${d.creados} trabajador(es) agregados desde el registro.`); await load() }
+    catch (e) { setMsg(`⚠️ ${e.message}`) }
+  }
   async function importar(e) {
     const file = e.target.files?.[0]; if (!file) return
     setMsg('Importando…')
@@ -200,6 +205,7 @@ export default function Planilla({ onBack }) {
           </select>
         </div>
         <div className="pl-actions">
+          {tab === 'trabajadores' && <button className="btn-secondary" onClick={desdeColaboradores}>👥 Importar colaboradores</button>}
           <label className="btn-secondary pl-imp"><input ref={fileRef} type="file" accept=".xlsx,.xls" hidden onChange={importar} />📥 Importar Excel</label>
           <button className="btn-secondary" onClick={exportar}>📤 Exportar Excel</button>
         </div>

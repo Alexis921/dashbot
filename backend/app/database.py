@@ -106,6 +106,10 @@ class Configuracion(Base):
     recordatorio_wsp = Column(Boolean, default=True)
     recordatorio_email = Column(Boolean, default=False)
     recordatorio_email_dest = Column(String(200))
+    # Fechas de pago de planilla (submódulo 3)
+    pago_quincena_dia = Column(Integer, default=15)
+    pago_finmes_dia = Column(Integer, default=30)
+    pago_recordatorio = Column(Boolean, default=False)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -233,8 +237,32 @@ class Colaborador(Base):
     discapacidad = Column(Boolean, default=False)
     sindicalizado = Column(Boolean, default=False)
 
+    # Desempeño (submódulo 3)
+    habilidades = Column(Text)                 # JSON {"comunicacion":4,...}
+    rendimiento = Column(Integer, default=0)   # 0..100
+    notas_desempeno = Column(Text)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TalentoEvento(Base):
+    """Novedad RR.HH.: permiso, memorándum, hora extra, bono, tardanza, etc."""
+    __tablename__ = "talento_eventos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    colaborador_id = Column(Integer, ForeignKey("colaboradores.id"), index=True, nullable=True)
+    colaborador_nombre = Column(String(200))
+    periodo = Column(String(7), index=True)    # YYYY-MM
+    tipo = Column(String(30))                  # permiso|memorandum|hora_extra|bono|tardanza|falta|vacaciones|licencia|felicitacion|otro
+    fecha = Column(String(10))
+    descripcion = Column(Text)
+    monto = Column(Float, default=0)
+    horas = Column(Float, default=0)
+    estado = Column(String(20), default="registrado")  # registrado|aprobado|rechazado
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class PlanillaTrabajador(Base):
@@ -363,9 +391,17 @@ def _migrate_columns():
                     "recordatorio_wsp": "BOOLEAN DEFAULT 1",
                     "recordatorio_email": "BOOLEAN DEFAULT 0",
                     "recordatorio_email_dest": "VARCHAR(200)",
+                    "pago_quincena_dia": "INTEGER DEFAULT 15",
+                    "pago_finmes_dia": "INTEGER DEFAULT 30",
+                    "pago_recordatorio": "BOOLEAN DEFAULT 0",
                 }
                 for col, tipo in cnuevas.items():
                     if col not in ccols:
                         conn.execute(text(f"ALTER TABLE configuraciones ADD COLUMN {col} {tipo}"))
+            if "colaboradores" in tables:
+                clcols = {c["name"] for c in insp.get_columns("colaboradores")}
+                for col, tipo in {"habilidades": "TEXT", "rendimiento": "INTEGER DEFAULT 0", "notas_desempeno": "TEXT"}.items():
+                    if col not in clcols:
+                        conn.execute(text(f"ALTER TABLE colaboradores ADD COLUMN {col} {tipo}"))
     except Exception:
         pass

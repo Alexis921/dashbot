@@ -17,7 +17,7 @@ const MENU = [
   { id: 'empresas',       label: 'Empresas',       icon: '🏢' },
   { id: 'alertas',        label: 'Alertas',        icon: '⚠️'  },
   { id: 'programacion',   label: 'Programación',   icon: '🕐' },
-  { id: 'equipo',         label: 'Equipo',         icon: '👥' },
+  { id: 'equipo',         label: 'Equipo',         icon: '🧑‍💼' },
   { id: 'mi-plan',        label: 'Mi Plan',        icon: '💎' },
   { id: 'configuracion',  label: 'Configuración',  icon: '⚙️'  },
   { id: 'sugerencias',    label: 'Sugerencias',    icon: '💡' },

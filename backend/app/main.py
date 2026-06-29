@@ -23,7 +23,7 @@ from datetime import date
 from app.database import (
     get_db, init_db, User, Empresa, Notification, SyncLog,
     Programacion, Configuracion, Obligacion, ObligacionEvento, Colaborador,
-    PlanillaTrabajador, RentaCuarta,
+    PlanillaTrabajador, RentaCuarta, TalentoEvento,
 )
 from app import planilla as pl
 from app.auth import (
@@ -122,6 +122,9 @@ class ConfiguracionUpdate(BaseModel):
     recordatorio_wsp: bool = True
     recordatorio_email: bool = False
     recordatorio_email_dest: Optional[str] = ""
+    pago_quincena_dia: Optional[int] = 15
+    pago_finmes_dia: Optional[int] = 30
+    pago_recordatorio: Optional[bool] = False
 
 
 class TestWhatsappRequest(BaseModel):
@@ -230,6 +233,22 @@ class ColaboradorIn(BaseModel):
     direccion: Optional[str] = ""
     discapacidad: bool = False
     sindicalizado: bool = False
+    habilidades: Optional[str] = None
+    rendimiento: Optional[int] = None
+    notas_desempeno: Optional[str] = None
+
+
+class TalentoEventoIn(BaseModel):
+    empresa_id: Optional[int] = None
+    colaborador_id: Optional[int] = None
+    colaborador_nombre: Optional[str] = ""
+    periodo: str
+    tipo: str = "otro"
+    fecha: Optional[str] = ""
+    descripcion: Optional[str] = ""
+    monto: float = 0
+    horas: float = 0
+    estado: str = "registrado"
 
 
 # ── Startup ────────────────────────────────────────────────────────────────
@@ -1005,6 +1024,9 @@ def _config_dict(c: Configuracion) -> dict:
         "recordatorio_wsp": c.recordatorio_wsp if c.recordatorio_wsp is not None else True,
         "recordatorio_email": bool(c.recordatorio_email),
         "recordatorio_email_dest": c.recordatorio_email_dest or "",
+        "pago_quincena_dia": c.pago_quincena_dia or 15,
+        "pago_finmes_dia": c.pago_finmes_dia or 30,
+        "pago_recordatorio": bool(c.pago_recordatorio),
     }
 
 
@@ -1013,6 +1035,7 @@ _CONFIG_DEFAULT = {
     "whatsapp_nivel": "urgentes", "recordatorios_activo": False,
     "recordatorio_dias": "7,3,1,0", "recordatorio_wsp": True,
     "recordatorio_email": False, "recordatorio_email_dest": "",
+    "pago_quincena_dia": 15, "pago_finmes_dia": 30, "pago_recordatorio": False,
 }
 
 
@@ -1043,6 +1066,12 @@ async def save_configuracion(
     cfg.recordatorio_wsp = req.recordatorio_wsp
     cfg.recordatorio_email = req.recordatorio_email
     cfg.recordatorio_email_dest = (req.recordatorio_email_dest or "").strip()
+    if req.pago_quincena_dia is not None:
+        cfg.pago_quincena_dia = req.pago_quincena_dia
+    if req.pago_finmes_dia is not None:
+        cfg.pago_finmes_dia = req.pago_finmes_dia
+    if req.pago_recordatorio is not None:
+        cfg.pago_recordatorio = req.pago_recordatorio
     cfg.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(cfg)
@@ -1116,7 +1145,23 @@ def _colab_dict(c: Colaborador, empresa_nombre: str = "") -> dict:
     d["empresa_id"] = c.empresa_id
     d["empresa"] = empresa_nombre
     d["nombre_completo"] = " ".join(x for x in [c.nombres, c.ap_paterno, c.ap_materno] if x)
+    try:
+        d["habilidades"] = json.loads(c.habilidades) if c.habilidades else {}
+    except Exception:
+        d["habilidades"] = {}
+    d["rendimiento"] = c.rendimiento or 0
+    d["notas_desempeno"] = c.notas_desempeno or ""
     return d
+
+
+def _aplicar_eval(c: Colaborador, req: "ColaboradorIn"):
+    """Aplica los campos de desempeño solo si vienen (no los borra en ediciones normales)."""
+    if req.habilidades is not None:
+        c.habilidades = req.habilidades if isinstance(req.habilidades, str) else json.dumps(req.habilidades)
+    if req.rendimiento is not None:
+        c.rendimiento = req.rendimiento
+    if req.notas_desempeno is not None:
+        c.notas_desempeno = req.notas_desempeno
 
 
 @app.get("/api/colaboradores")
@@ -1146,6 +1191,7 @@ async def create_colaborador(
     c = Colaborador(user_id=user.id, empresa_id=req.empresa_id)
     for f in _COLAB_FIELDS:
         setattr(c, f, getattr(req, f))
+    _aplicar_eval(c, req)
     db.add(c)
     db.commit()
     db.refresh(c)
@@ -1170,6 +1216,7 @@ async def update_colaborador(
         c.empresa_id = req.empresa_id
     for f in _COLAB_FIELDS:
         setattr(c, f, getattr(req, f))
+    _aplicar_eval(c, req)
     c.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(c)
@@ -1190,6 +1237,95 @@ async def delete_colaborador(
         raise HTTPException(404, "Colaborador no encontrado.")
     db.delete(c)
     db.commit()
+    return {"success": True}
+
+
+@app.get("/api/colaboradores/export")
+async def export_colaboradores(empresa_id: int = 0, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(Colaborador).filter(Colaborador.user_id == user.id)
+    if empresa_id:
+        q = q.filter(Colaborador.empresa_id == empresa_id)
+    filas = [_colab_dict(c) for c in q.order_by(Colaborador.ap_paterno).all()]
+    data = pl.exportar_excel(filas, pl.COLAB_COLS, "Colaboradores", "")
+    return StreamingResponse(iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="colaboradores.xlsx"'})
+
+
+@app.post("/api/colaboradores/import")
+async def import_colaboradores(empresa_id: int = 0, file: UploadFile = File(...),
+                               user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    contenido = await file.read()
+    try:
+        filas = pl.importar_excel(contenido, pl.COLAB_COLS)
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo leer el Excel: {str(e)[:120]}")
+    creados = 0
+    for fila in filas:
+        c = Colaborador(user_id=user.id, empresa_id=empresa_id or None)
+        for f in _COLAB_FIELDS:
+            if f in fila and fila[f] is not None:
+                setattr(c, f, str(fila[f]) if f not in ("discapacidad", "sindicalizado") else bool(fila[f]))
+        if c.num_doc or c.nombres:
+            db.add(c); creados += 1
+    db.commit()
+    return {"success": True, "creados": creados}
+
+
+# ── Equipo: Gestión del Talento (eventos) ────────────────────────────────────
+_TALENTO_FIELDS = ["empresa_id", "colaborador_id", "colaborador_nombre", "periodo",
+                   "tipo", "fecha", "descripcion", "monto", "horas", "estado"]
+
+
+def _talento_dict(e: TalentoEvento, empresa_nombre: str = "") -> dict:
+    return {f: getattr(e, f) for f in _TALENTO_FIELDS} | {"id": e.id, "empresa": empresa_nombre}
+
+
+@app.get("/api/talento/eventos")
+async def list_talento(empresa_id: int = 0, periodo: str = "", tipo: str = "",
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(TalentoEvento).filter(TalentoEvento.user_id == user.id)
+    if empresa_id:
+        q = q.filter(TalentoEvento.empresa_id == empresa_id)
+    if periodo:
+        q = q.filter(TalentoEvento.periodo == periodo)
+    if tipo:
+        q = q.filter(TalentoEvento.tipo == tipo)
+    nombres = _empresa_nombre_map(user, db)
+    eventos = q.order_by(TalentoEvento.fecha.desc()).all()
+    return {"eventos": [_talento_dict(e, nombres.get(e.empresa_id, "")) for e in eventos]}
+
+
+@app.post("/api/talento/eventos")
+async def create_talento(req: TalentoEventoIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+    e = TalentoEvento(user_id=user.id)
+    for f in _TALENTO_FIELDS:
+        setattr(e, f, getattr(req, f))
+    db.add(e); db.commit(); db.refresh(e)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "evento": _talento_dict(e, nombres.get(e.empresa_id, ""))}
+
+
+@app.put("/api/talento/eventos/{eid}")
+async def update_talento(eid: int, req: TalentoEventoIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    e = db.query(TalentoEvento).filter(TalentoEvento.id == eid, TalentoEvento.user_id == user.id).first()
+    if not e:
+        raise HTTPException(404, "Evento no encontrado.")
+    for f in _TALENTO_FIELDS:
+        setattr(e, f, getattr(req, f))
+    db.commit(); db.refresh(e)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "evento": _talento_dict(e, nombres.get(e.empresa_id, ""))}
+
+
+@app.delete("/api/talento/eventos/{eid}")
+async def delete_talento(eid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    e = db.query(TalentoEvento).filter(TalentoEvento.id == eid, TalentoEvento.user_id == user.id).first()
+    if not e:
+        raise HTTPException(404, "Evento no encontrado.")
+    db.delete(e); db.commit()
     return {"success": True}
 
 
@@ -1224,6 +1360,37 @@ async def create_trabajador(req: TrabajadorIn, user: User = Depends(get_current_
     db.add(t); db.commit(); db.refresh(t)
     nombres = _empresa_nombre_map(user, db)
     return {"success": True, "trabajador": pl.trab_dict(t, nombres.get(t.empresa_id, ""))}
+
+
+@app.post("/api/planilla/trabajadores/desde-colaboradores")
+async def planilla_desde_colaboradores(empresa_id: int = 0, periodo: str = "",
+                                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Crea filas de planilla del período a partir de los colaboradores activos registrados."""
+    if not periodo:
+        raise HTTPException(400, "Indica el período.")
+    q = db.query(Colaborador).filter(Colaborador.user_id == user.id, Colaborador.situacion == "activo")
+    if empresa_id:
+        q = q.filter(Colaborador.empresa_id == empresa_id)
+    existentes = {
+        (t.empresa_id, t.num_doc) for t in db.query(PlanillaTrabajador).filter(
+            PlanillaTrabajador.user_id == user.id, PlanillaTrabajador.periodo == periodo).all()
+    }
+    creados = 0
+    for c in q.all():
+        if (c.empresa_id, c.num_doc) in existentes:
+            continue
+        rem = float(c.remuneracion or 0)
+        tasa = 0.125 if c.regimen_pensionario == "AFP" else 0.13
+        nombre = " ".join(x for x in [c.ap_paterno, c.ap_materno, c.nombres] if x)
+        db.add(PlanillaTrabajador(
+            user_id=user.id, empresa_id=c.empresa_id, periodo=periodo,
+            num_doc=c.num_doc, nombre=nombre, regimen_pensionario=c.regimen_pensionario or "ONP",
+            afp_nombre=c.afp_nombre, dias_laborados=30, remuneracion=rem,
+            aporte_pension=round(rem * tasa, 2), essalud=round(rem * 0.09, 2),
+        ))
+        creados += 1
+    db.commit()
+    return {"success": True, "creados": creados}
 
 
 @app.put("/api/planilla/trabajadores/{tid}")
