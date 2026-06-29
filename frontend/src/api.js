@@ -227,6 +227,51 @@ export async function apiDeleteColaborador(id) {
   return req(`/api/colaboradores/${id}`, { method: 'DELETE' })
 }
 
+// ── Planilla (PLAME) ───────────────────────────────────────
+export async function apiListPlanilla(tipo, empresaId = 0, periodo = '') {
+  const p = new URLSearchParams()
+  if (empresaId) p.set('empresa_id', empresaId)
+  if (periodo) p.set('periodo', periodo)
+  return req(`/api/planilla/${tipo}?${p.toString()}`)
+}
+export async function apiCreatePlanilla(tipo, data) {
+  return req(`/api/planilla/${tipo}`, { method: 'POST', body: data })
+}
+export async function apiUpdatePlanilla(tipo, id, data) {
+  return req(`/api/planilla/${tipo}/${id}`, { method: 'PUT', body: data })
+}
+export async function apiDeletePlanilla(tipo, id) {
+  return req(`/api/planilla/${tipo}/${id}`, { method: 'DELETE' })
+}
+export async function apiImportPlanilla(tipo, empresaId, periodo, file) {
+  const fd = new FormData(); fd.append('file', file)
+  const t = getToken()
+  const p = new URLSearchParams()
+  if (empresaId) p.set('empresa_id', empresaId)
+  if (periodo) p.set('periodo', periodo)
+  const res = await fetch(`${BASE}/api/planilla/${tipo}/import?${p.toString()}`, {
+    method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd,
+  })
+  const d = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(d.detail || 'No se pudo importar')
+  return d
+}
+export async function apiExportPlanilla(tipo, empresaId, periodo) {
+  const t = getToken()
+  const p = new URLSearchParams()
+  if (empresaId) p.set('empresa_id', empresaId)
+  if (periodo) p.set('periodo', periodo)
+  const res = await fetch(`${BASE}/api/planilla/${tipo}/export?${p.toString()}`, {
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+  })
+  if (!res.ok) throw new Error('No se pudo exportar')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = `planilla_${tipo}_${periodo || 'todos'}.xlsx`; a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ── Chatbot general (Centro de Mando) ──────────────────────
 export async function apiChat(pregunta, historial) {
   return req('/api/chat', { method: 'POST', body: { pregunta, historial } })

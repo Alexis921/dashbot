@@ -23,7 +23,9 @@ from datetime import date
 from app.database import (
     get_db, init_db, User, Empresa, Notification, SyncLog,
     Programacion, Configuracion, Obligacion, ObligacionEvento, Colaborador,
+    PlanillaTrabajador, RentaCuarta,
 )
+from app import planilla as pl
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
     encrypt_secret, decrypt_secret,
@@ -166,6 +168,35 @@ class ChatReq(BaseModel):
 class ChatGeneralReq(BaseModel):
     pregunta: str
     historial: Optional[list] = None
+
+
+class TrabajadorIn(BaseModel):
+    empresa_id: Optional[int] = None
+    periodo: str
+    num_doc: str = ""
+    nombre: str = ""
+    regimen_pensionario: str = "ONP"
+    afp_nombre: Optional[str] = ""
+    dias_laborados: int = 30
+    remuneracion: float = 0
+    asignacion_familiar: float = 0
+    otros_ingresos: float = 0
+    aporte_pension: float = 0
+    essalud: float = 0
+    renta_quinta: float = 0
+    otros_descuentos: float = 0
+
+
+class CuartaIn(BaseModel):
+    empresa_id: Optional[int] = None
+    periodo: str
+    tipo_doc: str = "RUC"
+    num_doc: str = ""
+    nombre: str = ""
+    num_recibo: Optional[str] = ""
+    fecha_emision: Optional[str] = ""
+    monto_bruto: float = 0
+    retencion: float = 0
 
 
 class ColaboradorIn(BaseModel):
@@ -1160,6 +1191,186 @@ async def delete_colaborador(
     db.delete(c)
     db.commit()
     return {"success": True}
+
+
+# ── Planilla (PLAME): Trabajadores 5ta + Renta 4ta ──────────────────────────
+_TRAB_FIELDS = ["periodo", "num_doc", "nombre", "regimen_pensionario", "afp_nombre",
+                "dias_laborados", "remuneracion", "asignacion_familiar", "otros_ingresos",
+                "aporte_pension", "essalud", "renta_quinta", "otros_descuentos"]
+_CUARTA_FIELDS = ["periodo", "tipo_doc", "num_doc", "nombre", "num_recibo",
+                  "fecha_emision", "monto_bruto", "retencion"]
+
+
+@app.get("/api/planilla/trabajadores")
+async def list_trabajadores(empresa_id: int = 0, periodo: str = "",
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(PlanillaTrabajador).filter(PlanillaTrabajador.user_id == user.id)
+    if empresa_id:
+        q = q.filter(PlanillaTrabajador.empresa_id == empresa_id)
+    if periodo:
+        q = q.filter(PlanillaTrabajador.periodo == periodo)
+    nombres = _empresa_nombre_map(user, db)
+    filas = [pl.trab_dict(t, nombres.get(t.empresa_id, "")) for t in q.order_by(PlanillaTrabajador.nombre).all()]
+    return {"trabajadores": filas}
+
+
+@app.post("/api/planilla/trabajadores")
+async def create_trabajador(req: TrabajadorIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+    t = PlanillaTrabajador(user_id=user.id, empresa_id=req.empresa_id)
+    for f in _TRAB_FIELDS:
+        setattr(t, f, getattr(req, f))
+    db.add(t); db.commit(); db.refresh(t)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "trabajador": pl.trab_dict(t, nombres.get(t.empresa_id, ""))}
+
+
+@app.put("/api/planilla/trabajadores/{tid}")
+async def update_trabajador(tid: int, req: TrabajadorIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    t = db.query(PlanillaTrabajador).filter(PlanillaTrabajador.id == tid, PlanillaTrabajador.user_id == user.id).first()
+    if not t:
+        raise HTTPException(404, "Registro no encontrado.")
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db); t.empresa_id = req.empresa_id
+    for f in _TRAB_FIELDS:
+        setattr(t, f, getattr(req, f))
+    db.commit(); db.refresh(t)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "trabajador": pl.trab_dict(t, nombres.get(t.empresa_id, ""))}
+
+
+@app.delete("/api/planilla/trabajadores/{tid}")
+async def delete_trabajador(tid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    t = db.query(PlanillaTrabajador).filter(PlanillaTrabajador.id == tid, PlanillaTrabajador.user_id == user.id).first()
+    if not t:
+        raise HTTPException(404, "Registro no encontrado.")
+    db.delete(t); db.commit()
+    return {"success": True}
+
+
+@app.get("/api/planilla/trabajadores/export")
+async def export_trabajadores(empresa_id: int = 0, periodo: str = "",
+                              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(PlanillaTrabajador).filter(PlanillaTrabajador.user_id == user.id)
+    if empresa_id:
+        q = q.filter(PlanillaTrabajador.empresa_id == empresa_id)
+    if periodo:
+        q = q.filter(PlanillaTrabajador.periodo == periodo)
+    filas = [pl.trab_dict(t) for t in q.order_by(PlanillaTrabajador.nombre).all()]
+    data = pl.exportar_excel(filas, pl.TRAB_COLS, "Planilla de Trabajadores (5ta)", periodo)
+    return StreamingResponse(iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="planilla_trabajadores_{periodo or "todos"}.xlsx"'})
+
+
+@app.post("/api/planilla/trabajadores/import")
+async def import_trabajadores(empresa_id: int = 0, periodo: str = "",
+                              file: UploadFile = File(...),
+                              user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    contenido = await file.read()
+    try:
+        filas = pl.importar_excel(contenido, pl.TRAB_COLS)
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo leer el Excel: {str(e)[:120]}")
+    creados = 0
+    for fila in filas:
+        t = PlanillaTrabajador(user_id=user.id, empresa_id=empresa_id or None, periodo=periodo)
+        for f in _TRAB_FIELDS:
+            if f in fila and fila[f] is not None:
+                setattr(t, f, fila[f])
+        if periodo:
+            t.periodo = periodo
+        if t.num_doc or t.nombre:
+            db.add(t); creados += 1
+    db.commit()
+    return {"success": True, "creados": creados}
+
+
+@app.get("/api/planilla/cuarta")
+async def list_cuarta(empresa_id: int = 0, periodo: str = "",
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(RentaCuarta).filter(RentaCuarta.user_id == user.id)
+    if empresa_id:
+        q = q.filter(RentaCuarta.empresa_id == empresa_id)
+    if periodo:
+        q = q.filter(RentaCuarta.periodo == periodo)
+    nombres = _empresa_nombre_map(user, db)
+    filas = [pl.cuarta_dict(c, nombres.get(c.empresa_id, "")) for c in q.order_by(RentaCuarta.fecha_emision).all()]
+    return {"cuarta": filas}
+
+
+@app.post("/api/planilla/cuarta")
+async def create_cuarta(req: CuartaIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+    c = RentaCuarta(user_id=user.id, empresa_id=req.empresa_id)
+    for f in _CUARTA_FIELDS:
+        setattr(c, f, getattr(req, f))
+    db.add(c); db.commit(); db.refresh(c)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "cuarta": pl.cuarta_dict(c, nombres.get(c.empresa_id, ""))}
+
+
+@app.put("/api/planilla/cuarta/{cid}")
+async def update_cuarta(cid: int, req: CuartaIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.query(RentaCuarta).filter(RentaCuarta.id == cid, RentaCuarta.user_id == user.id).first()
+    if not c:
+        raise HTTPException(404, "Registro no encontrado.")
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db); c.empresa_id = req.empresa_id
+    for f in _CUARTA_FIELDS:
+        setattr(c, f, getattr(req, f))
+    db.commit(); db.refresh(c)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "cuarta": pl.cuarta_dict(c, nombres.get(c.empresa_id, ""))}
+
+
+@app.delete("/api/planilla/cuarta/{cid}")
+async def delete_cuarta(cid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.query(RentaCuarta).filter(RentaCuarta.id == cid, RentaCuarta.user_id == user.id).first()
+    if not c:
+        raise HTTPException(404, "Registro no encontrado.")
+    db.delete(c); db.commit()
+    return {"success": True}
+
+
+@app.get("/api/planilla/cuarta/export")
+async def export_cuarta(empresa_id: int = 0, periodo: str = "",
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(RentaCuarta).filter(RentaCuarta.user_id == user.id)
+    if empresa_id:
+        q = q.filter(RentaCuarta.empresa_id == empresa_id)
+    if periodo:
+        q = q.filter(RentaCuarta.periodo == periodo)
+    filas = [pl.cuarta_dict(c) for c in q.order_by(RentaCuarta.fecha_emision).all()]
+    data = pl.exportar_excel(filas, pl.CUARTA_COLS, "Renta de 4ta categoría (RHE)", periodo)
+    return StreamingResponse(iter([data]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="renta_cuarta_{periodo or "todos"}.xlsx"'})
+
+
+@app.post("/api/planilla/cuarta/import")
+async def import_cuarta(empresa_id: int = 0, periodo: str = "",
+                        file: UploadFile = File(...),
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    contenido = await file.read()
+    try:
+        filas = pl.importar_excel(contenido, pl.CUARTA_COLS)
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo leer el Excel: {str(e)[:120]}")
+    creados = 0
+    for fila in filas:
+        c = RentaCuarta(user_id=user.id, empresa_id=empresa_id or None, periodo=periodo)
+        for f in _CUARTA_FIELDS:
+            if f in fila and fila[f] is not None:
+                setattr(c, f, fila[f])
+        if periodo:
+            c.periodo = periodo
+        if c.num_doc or c.nombre:
+            db.add(c); creados += 1
+    db.commit()
+    return {"success": True, "creados": creados}
 
 
 # ── Envío de resumen por correo ──────────────────────────────────────────────

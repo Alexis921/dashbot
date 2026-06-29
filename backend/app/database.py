@@ -237,6 +237,47 @@ class Colaborador(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PlanillaTrabajador(Base):
+    """Registro mensual de planilla de un trabajador (5ta categoría), formato PLAME."""
+    __tablename__ = "planilla_trabajadores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    periodo = Column(String(7), index=True)             # YYYY-MM
+    num_doc = Column(String(20))
+    nombre = Column(String(200))
+    regimen_pensionario = Column(String(20), default="ONP")  # ONP | AFP
+    afp_nombre = Column(String(40))
+    dias_laborados = Column(Integer, default=30)
+    remuneracion = Column(Float, default=0)
+    asignacion_familiar = Column(Float, default=0)
+    otros_ingresos = Column(Float, default=0)
+    aporte_pension = Column(Float, default=0)           # ONP 13% / AFP ~ aporte
+    essalud = Column(Float, default=0)                  # 9% (aporte del empleador)
+    renta_quinta = Column(Float, default=0)             # retención IR 5ta
+    otros_descuentos = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RentaCuarta(Base):
+    """Recibo por Honorarios (4ta categoría) declarado en PLAME."""
+    __tablename__ = "renta_cuarta"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    periodo = Column(String(7), index=True)             # YYYY-MM
+    tipo_doc = Column(String(20), default="RUC")
+    num_doc = Column(String(20))
+    nombre = Column(String(200))
+    num_recibo = Column(String(40))                     # RHE serie-número
+    fecha_emision = Column(String(10))
+    monto_bruto = Column(Float, default=0)
+    retencion = Column(Float, default=0)                # 8% si corresponde
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Cronograma(Base):
     """Cache del cronograma oficial SUNAT por (año, último dígito de RUC)."""
     __tablename__ = "cronogramas"

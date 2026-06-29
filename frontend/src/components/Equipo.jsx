@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import Colaboradores from './Colaboradores'
+import Planilla from './Planilla'
 import { apiListColaboradores } from '../api'
 
 const SUBMODULOS = [
   { id: 'colaboradores', icon: '👥', titulo: 'Registro de colaboradores', desc: 'Personal alineado al PDT PLAME / T-Registro.', activo: true },
-  { id: 'planilla', icon: '🧾', titulo: 'Planilla y remuneraciones', desc: 'Cálculo de sueldos, ONP/AFP, EsSalud y aportes.', activo: false },
+  { id: 'planilla', icon: '🧾', titulo: 'Planilla y remuneraciones', desc: 'Trabajadores 5ta + renta 4ta, con importar/exportar Excel.', activo: true },
   { id: 'asistencia', icon: '🗓️', titulo: 'Asistencia y vacaciones', desc: 'Control de días, descansos y ausencias.', activo: false },
   { id: 'contratos', icon: '📄', titulo: 'Contratos y documentos', desc: 'Contratos, boletas y archivos del colaborador.', activo: false },
 ]
@@ -27,6 +28,7 @@ export default function Equipo() {
   }, [view])
 
   if (view === 'colaboradores') return <Colaboradores onBack={() => setView('dashboard')} />
+  if (view === 'planilla') return <Planilla onBack={() => setView('dashboard')} />
 
   const total = colabs.length
   const activos = colabs.filter((c) => c.situacion === 'activo').length
