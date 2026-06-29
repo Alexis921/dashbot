@@ -186,6 +186,57 @@ class ObligacionEvento(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Colaborador(Base):
+    """Trabajador registrado, alineado al PDT PLAME / T-Registro SUNAT."""
+    __tablename__ = "colaboradores"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+
+    # Identificación
+    tipo_doc = Column(String(20), default="DNI")        # DNI | CE | Pasaporte | PTP
+    num_doc = Column(String(20))
+    ap_paterno = Column(String(80))
+    ap_materno = Column(String(80))
+    nombres = Column(String(120))
+    fecha_nacimiento = Column(String(10))               # YYYY-MM-DD
+    sexo = Column(String(1))                             # M | F
+    nacionalidad = Column(String(60), default="Peruana")
+
+    # Datos laborales (PLAME)
+    tipo_trabajador = Column(String(60))                # Empleado | Obrero | ...
+    regimen_laboral = Column(String(60))                # General | MYPE | Agrario | ...
+    tipo_contrato = Column(String(60))                  # Indeterminado | Plazo fijo | ...
+    ocupacion = Column(String(120))                     # cargo
+    jornada = Column(String(30), default="Tiempo completo")
+    fecha_ingreso = Column(String(10))
+    fecha_cese = Column(String(10))
+    situacion = Column(String(30), default="activo")    # activo | cesado | subsidiado
+
+    # Previsional y salud
+    regimen_pensionario = Column(String(20))            # ONP | AFP
+    afp_nombre = Column(String(40))                     # Integra | Prima | Profuturo | Habitat
+    cuspp = Column(String(40))
+    regimen_salud = Column(String(20), default="EsSalud")  # EsSalud | EPS
+
+    # Remuneración y pago
+    remuneracion = Column(String(20))                   # monto mensual
+    periodicidad = Column(String(20), default="Mensual")
+    tipo_pago = Column(String(20), default="Depósito")  # Depósito | Efectivo
+    cci = Column(String(40))
+
+    # Contacto y otros
+    email = Column(String(150))
+    telefono = Column(String(30))
+    direccion = Column(String(300))
+    discapacidad = Column(Boolean, default=False)
+    sindicalizado = Column(Boolean, default=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Cronograma(Base):
     """Cache del cronograma oficial SUNAT por (año, último dígito de RUC)."""
     __tablename__ = "cronogramas"

@@ -22,7 +22,7 @@ import json
 from datetime import date
 from app.database import (
     get_db, init_db, User, Empresa, Notification, SyncLog,
-    Programacion, Configuracion, Obligacion, ObligacionEvento,
+    Programacion, Configuracion, Obligacion, ObligacionEvento, Colaborador,
 )
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
@@ -166,6 +166,39 @@ class ChatReq(BaseModel):
 class ChatGeneralReq(BaseModel):
     pregunta: str
     historial: Optional[list] = None
+
+
+class ColaboradorIn(BaseModel):
+    empresa_id: Optional[int] = None
+    tipo_doc: str = "DNI"
+    num_doc: str = ""
+    ap_paterno: str = ""
+    ap_materno: str = ""
+    nombres: str = ""
+    fecha_nacimiento: Optional[str] = ""
+    sexo: Optional[str] = ""
+    nacionalidad: Optional[str] = "Peruana"
+    tipo_trabajador: Optional[str] = ""
+    regimen_laboral: Optional[str] = ""
+    tipo_contrato: Optional[str] = ""
+    ocupacion: Optional[str] = ""
+    jornada: Optional[str] = "Tiempo completo"
+    fecha_ingreso: Optional[str] = ""
+    fecha_cese: Optional[str] = ""
+    situacion: Optional[str] = "activo"
+    regimen_pensionario: Optional[str] = ""
+    afp_nombre: Optional[str] = ""
+    cuspp: Optional[str] = ""
+    regimen_salud: Optional[str] = "EsSalud"
+    remuneracion: Optional[str] = ""
+    periodicidad: Optional[str] = "Mensual"
+    tipo_pago: Optional[str] = "Depósito"
+    cci: Optional[str] = ""
+    email: Optional[str] = ""
+    telefono: Optional[str] = ""
+    direccion: Optional[str] = ""
+    discapacidad: bool = False
+    sindicalizado: bool = False
 
 
 # ── Startup ────────────────────────────────────────────────────────────────
@@ -1033,6 +1066,100 @@ async def chat(
                      f"{prox.fecha_vencimiento.date().isoformat()}.")
     respuesta = await chat_general(user.nombre, req.pregunta.strip(), req.historial, contexto)
     return {"success": True, "respuesta": respuesta}
+
+
+# ── Equipo: Colaboradores (PLAME) ────────────────────────────────────────────
+_COLAB_FIELDS = [
+    "tipo_doc", "num_doc", "ap_paterno", "ap_materno", "nombres", "fecha_nacimiento",
+    "sexo", "nacionalidad", "tipo_trabajador", "regimen_laboral", "tipo_contrato",
+    "ocupacion", "jornada", "fecha_ingreso", "fecha_cese", "situacion",
+    "regimen_pensionario", "afp_nombre", "cuspp", "regimen_salud", "remuneracion",
+    "periodicidad", "tipo_pago", "cci", "email", "telefono", "direccion",
+    "discapacidad", "sindicalizado",
+]
+
+
+def _colab_dict(c: Colaborador, empresa_nombre: str = "") -> dict:
+    d = {f: getattr(c, f) for f in _COLAB_FIELDS}
+    d["id"] = c.id
+    d["empresa_id"] = c.empresa_id
+    d["empresa"] = empresa_nombre
+    d["nombre_completo"] = " ".join(x for x in [c.nombres, c.ap_paterno, c.ap_materno] if x)
+    return d
+
+
+@app.get("/api/colaboradores")
+async def list_colaboradores(
+    empresa_id: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Colaborador).filter(Colaborador.user_id == user.id)
+    if empresa_id:
+        q = q.filter(Colaborador.empresa_id == empresa_id)
+    colabs = q.order_by(Colaborador.ap_paterno).all()
+    nombres = _empresa_nombre_map(user, db)
+    return {"colaboradores": [_colab_dict(c, nombres.get(c.empresa_id, "")) for c in colabs]}
+
+
+@app.post("/api/colaboradores")
+async def create_colaborador(
+    req: ColaboradorIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not req.num_doc.strip() or not req.nombres.strip() or not req.ap_paterno.strip():
+        raise HTTPException(400, "Documento, nombres y apellido paterno son obligatorios.")
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+    c = Colaborador(user_id=user.id, empresa_id=req.empresa_id)
+    for f in _COLAB_FIELDS:
+        setattr(c, f, getattr(req, f))
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "colaborador": _colab_dict(c, nombres.get(c.empresa_id, ""))}
+
+
+@app.put("/api/colaboradores/{colaborador_id}")
+async def update_colaborador(
+    colaborador_id: int,
+    req: ColaboradorIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Colaborador).filter(
+        Colaborador.id == colaborador_id, Colaborador.user_id == user.id
+    ).first()
+    if not c:
+        raise HTTPException(404, "Colaborador no encontrado.")
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+        c.empresa_id = req.empresa_id
+    for f in _COLAB_FIELDS:
+        setattr(c, f, getattr(req, f))
+    c.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(c)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "colaborador": _colab_dict(c, nombres.get(c.empresa_id, ""))}
+
+
+@app.delete("/api/colaboradores/{colaborador_id}")
+async def delete_colaborador(
+    colaborador_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Colaborador).filter(
+        Colaborador.id == colaborador_id, Colaborador.user_id == user.id
+    ).first()
+    if not c:
+        raise HTTPException(404, "Colaborador no encontrado.")
+    db.delete(c)
+    db.commit()
+    return {"success": True}
 
 
 # ── Envío de resumen por correo ──────────────────────────────────────────────

@@ -212,6 +212,21 @@ export async function apiTestWhatsapp(whatsapp_numero, whatsapp_apikey) {
   })
 }
 
+// ── Equipo: Colaboradores ──────────────────────────────────
+export async function apiListColaboradores(empresaId = 0) {
+  const q = empresaId ? `?empresa_id=${empresaId}` : ''
+  return req(`/api/colaboradores${q}`)
+}
+export async function apiCreateColaborador(data) {
+  return req('/api/colaboradores', { method: 'POST', body: data })
+}
+export async function apiUpdateColaborador(id, data) {
+  return req(`/api/colaboradores/${id}`, { method: 'PUT', body: data })
+}
+export async function apiDeleteColaborador(id) {
+  return req(`/api/colaboradores/${id}`, { method: 'DELETE' })
+}
+
 // ── Chatbot general (Centro de Mando) ──────────────────────
 export async function apiChat(pregunta, historial) {
   return req('/api/chat', { method: 'POST', body: { pregunta, historial } })

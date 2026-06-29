@@ -7,6 +7,7 @@ import Configuracion from './components/Configuracion'
 import Alertas from './components/Alertas'
 import Agenda from './components/Agenda'
 import CentroMando from './components/CentroMando'
+import Equipo from './components/Equipo'
 import { apiMe, getToken, clearToken } from './api'
 
 const MENU = [
@@ -114,6 +115,9 @@ export default function App() {
     }
     if (activeModule === 'agenda' && !demoMode) {
       return <Agenda />
+    }
+    if (activeModule === 'equipo' && !demoMode) {
+      return <Equipo />
     }
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />
