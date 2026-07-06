@@ -7,9 +7,56 @@ del umbral más cercano aún no enviado (sin spam, gracias al dedup).
 import calendar
 from datetime import date, datetime, timedelta
 
-from app.database import SessionLocal, Configuracion, Obligacion, Empresa, RecordatorioLog
+from app.database import SessionLocal, Configuracion, Obligacion, Empresa, RecordatorioLog, HorarioBloque
 from app.whatsapp_service import send_whatsapp
 from app.email_service import send_simple_email
+
+
+async def _horario_reminder(db, cfg) -> int:
+    """Dispara los 🔔 del Horario Contable a la hora programada (hora de Perú).
+
+    Dedup: RecordatorioLog(obligacion_id=-3, dias_offset=<id del bloque>) —
+    cada bloque avisa una sola vez. Tolera ticks perdidos (dispara apenas
+    la hora actual pase la hora programada, dentro del mismo día).
+    """
+    ahora = datetime.utcnow() - timedelta(hours=5)  # Perú = UTC-5 (sin horario de verano)
+    hoy_iso = ahora.date().isoformat()
+    bloques = db.query(HorarioBloque).filter(
+        HorarioBloque.user_id == cfg.user_id,
+        HorarioBloque.fecha == hoy_iso,
+        HorarioBloque.recordatorio.isnot(None),
+        HorarioBloque.recordatorio != "",
+    ).all()
+    enviados = 0
+    for b in bloques:
+        try:
+            hh, mm = b.recordatorio.split(":")
+            objetivo = ahora.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+        except Exception:
+            continue
+        if ahora < objetivo:
+            continue
+        ya = db.query(RecordatorioLog).filter(
+            RecordatorioLog.obligacion_id == -3, RecordatorioLog.dias_offset == b.id).first()
+        if ya:
+            continue
+        actividad = (b.actividad or "").strip() or "Tu actividad programada"
+        msg = ("🕒 *Dashbot - Horario Contable*\n\n"
+               f"🔔 Recordatorio de las {b.recordatorio}:\n"
+               f"📌 {actividad}\n"
+               f"(bloque de las {b.hora}:00 de hoy)")
+        if cfg.whatsapp_numero and cfg.whatsapp_apikey:
+            await send_whatsapp(cfg.whatsapp_numero, cfg.whatsapp_apikey, msg)
+        if cfg.recordatorio_email_dest:
+            await send_simple_email(
+                cfg.recordatorio_email_dest,
+                f"🕒 Recordatorio de tu Horario Contable ({b.recordatorio})",
+                f"<p style='font-family:Arial'>🔔 <b>{actividad}</b><br>"
+                f"Programado a las {b.recordatorio} (bloque de las {b.hora}:00 de hoy).</p>")
+        db.add(RecordatorioLog(obligacion_id=-3, dias_offset=b.id))
+        db.commit()
+        enviados += 1
+    return enviados
 
 
 async def _pago_reminder(db, cfg, hoy) -> int:
@@ -158,6 +205,9 @@ async def run_recordatorios() -> dict:
             # Recordatorio de PAGO de planilla (quincena / fin de mes)
             if cfg.pago_recordatorio:
                 enviados += await _pago_reminder(db, cfg, hoy)
+
+            # Recordatorios del Horario Contable (🔔 por bloque, a la hora exacta)
+            enviados += await _horario_reminder(db, cfg)
 
         return {"enviados": enviados, "detalle": procesados, "checked_at": datetime.utcnow().isoformat()}
     finally:

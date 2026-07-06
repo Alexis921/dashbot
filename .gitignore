@@ -34,3 +34,6 @@ npm-debug.log*
 
 # Claude
 .claude/
+
+# Datos reales de clientes (NUNCA subir: claves SOL, reportes tributarios)
+ACTUALIZACION/

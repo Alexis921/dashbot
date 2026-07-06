@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dashbot &mdash; Automatización Tributaria SUNAT | Dashcont Technology</title>
+<title>Dashbot &mdash; Tu asistente contable con IA | Dashcont Technology</title>
 <meta name="description" content="Dashbot automatiza la lectura de tu buzón SUNAT. Detecta multas, plazos y notificaciones críticas antes de que sea tarde.">
+<link rel="icon" type="image/png" href="/favicon.png">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -49,12 +50,15 @@ a{text-decoration:none;color:inherit}
 .btn-wa:hover{background:#1ebe5d;transform:translateY(-1px);box-shadow:0 6px 20px rgba(37,211,102,.35)}
 .btn-lg{padding:16px 32px;font-size:16px}
 .btn-sm{padding:9px 18px;font-size:13px}
+.btn-glow{position:relative;overflow:hidden;background:linear-gradient(110deg,#0b1e3a,#14306b 45%,#0a9d63);color:#eafff5;box-shadow:0 8px 28px rgba(10,157,99,.4)}
+.btn-glow:hover{transform:translateY(-1px);box-shadow:0 12px 34px rgba(10,157,99,.55)}
+.btn-glow::after{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 30%,rgba(190,255,225,.4) 50%,transparent 70%);transform:translateX(-120%);animation:lshine 2.8s linear infinite}
 
 /* NAV */
 nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--gray-200)}
 .nav-inner{display:flex;align-items:center;gap:32px;padding:0 24px;height:66px;max-width:1140px;margin:0 auto}
 .nav-logo{display:flex;align-items:center;gap:10px;flex-shrink:0}
-.nav-logo-icon{width:36px;height:36px;background:var(--green);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.nav-logo-icon{width:36px;height:36px;background:linear-gradient(135deg,#0a9d63,#14306b);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#eafff5;box-shadow:0 0 14px rgba(10,157,99,.4)}
 .nav-logo-text{display:flex;flex-direction:column;line-height:1}
 .nav-logo-name{font-size:18px;font-weight:800;color:var(--navy);letter-spacing:-.3px}
 .nav-logo-co{font-size:9px;color:var(--gray-400);letter-spacing:.2px;margin-top:1px}
@@ -64,12 +68,25 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-
 .nav-cta{display:flex;gap:10px;margin-left:24px}
 
 /* HERO */
-.hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-lt) 55%,var(--navy-dk) 100%);padding:90px 0 80px;overflow:hidden;position:relative}
-.hero::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+.hero{background:radial-gradient(circle at 20% 25%,#16345f 0%,#0b1a33 48%,#070f1f 100%);padding:90px 0 80px;overflow:hidden;position:relative}
+.hero::before{content:'';position:absolute;inset:0;opacity:.5;background-image:linear-gradient(rgba(120,180,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(120,180,255,.06) 1px,transparent 1px);background-size:42px 42px;-webkit-mask-image:radial-gradient(circle at 30% 40%,#000 18%,transparent 78%);mask-image:radial-gradient(circle at 30% 40%,#000 18%,transparent 78%)}
+.hero .container{position:relative;z-index:1}
+.hero-orbs{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.hero-orbs span{position:absolute;border-radius:50%;filter:blur(46px);opacity:.5;animation:lorb 16s ease-in-out infinite}
+.hero-orbs span:nth-child(1){width:380px;height:380px;left:-70px;bottom:-90px;background:rgba(10,157,99,.4)}
+.hero-orbs span:nth-child(2){width:300px;height:300px;right:8%;top:-110px;background:rgba(36,99,205,.32);animation-delay:-5s}
+.hero-orbs span:nth-child(3){width:220px;height:220px;right:30%;bottom:0;background:rgba(24,227,154,.22);animation-delay:-9s}
+@keyframes lorb{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(24px,-28px) scale(1.12)}}
+@keyframes lshine{0%{transform:translateX(-120%)}60%,100%{transform:translateX(120%)}}
+@keyframes lpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.65)}}
 .hero-content{position:relative;z-index:1}
-.hero-label{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.9);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:22px}
+.hero-label{display:inline-flex;align-items:center;gap:8px;background:rgba(10,157,99,.14);border:1px solid rgba(24,227,154,.3);color:#9fffd9;border-radius:20px;padding:6px 15px;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:22px}
+.hero-label::before{content:'';width:8px;height:8px;border-radius:50%;background:#18e39a;box-shadow:0 0 10px #18e39a;animation:lpulse 1.6s ease-in-out infinite}
 .hero h1{font-size:clamp(30px,5vw,54px);font-weight:900;color:white;line-height:1.12;margin-bottom:20px;letter-spacing:-.5px}
-.hero h1 span{color:var(--green)}
+.hero h1 span{background:linear-gradient(90deg,#18e39a,#3fa9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+/* Degradado para resaltar frases clave en titulos de seccion */
+.hl{background:linear-gradient(90deg,#08b877,#2f7bef);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hl-b{background:linear-gradient(90deg,#18e39a,#3fa9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero-sub{font-size:clamp(15px,2vw,18px);color:rgba(255,255,255,.75);max-width:540px;margin-bottom:36px;line-height:1.65}
 .hero-actions{display:flex;gap:14px;flex-wrap:wrap}
 .hero-stats{display:flex;gap:32px;margin-top:48px;flex-wrap:wrap}
@@ -77,6 +94,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-
 .hero-stat-num{font-size:28px;font-weight:900;color:var(--green)}
 .hero-stat-label{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px}
 .hero-img{border-radius:16px;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.1)}
+.hero-robot{position:relative;z-index:1;display:flex;align-items:center;justify-content:center}
+.hero-robot::before{content:'';position:absolute;width:70%;height:70%;border-radius:50%;background:radial-gradient(circle,rgba(24,227,154,.35),rgba(63,169,255,.18) 45%,transparent 70%);filter:blur(30px);z-index:-1}
+.hero-robot img{width:100%;max-width:420px;height:auto;filter:drop-shadow(0 20px 40px rgba(0,0,0,.5));animation:rfloat 4s ease-in-out infinite}
+@keyframes rfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
 .mock-chat{background:#0f2347;border-radius:12px;padding:20px;min-height:340px;font-size:13px}
 .mock-header{background:var(--green);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .mock-header-title{color:white;font-weight:700;font-size:14px}
@@ -88,30 +109,81 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-
 .mock-card-title{color:rgba(255,255,255,.9);font-weight:600;font-size:11px;margin-bottom:4px}
 .mock-card-meta{color:rgba(255,255,255,.45);font-size:10px}
 .mock-badge{display:inline-block;background:#d92d20;color:white;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px}
+.mock-logo{width:34px;height:34px;border-radius:50%;overflow:hidden;background:rgba(255,255,255,.9);flex-shrink:0}
+.mock-logo img{width:100%;height:100%;object-fit:cover}
+.mock-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+
+/* MODULOS (lista vertical + chat) */
+.modulos-grid{align-items:start;gap:36px;margin-top:8px}
+.mod-list{display:flex;flex-direction:column;gap:14px}
+.mod-item{display:flex;gap:16px;align-items:flex-start;background:var(--white);border:1px solid var(--gray-200);border-radius:14px;padding:16px 18px;transition:box-shadow .2s,transform .15s,border-color .2s}
+.mod-item:hover{box-shadow:var(--shadow);transform:translateX(4px);border-color:transparent}
+.mod-icon{width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;flex-shrink:0;color:#fff}
+.mi-1{background:linear-gradient(135deg,#00d4a0,#00a651);box-shadow:0 8px 18px rgba(0,166,81,.32)}
+.mi-2{background:linear-gradient(135deg,#5b8def,#1b3a6b);box-shadow:0 8px 18px rgba(91,141,239,.32)}
+.mi-3{background:linear-gradient(135deg,#ffa63d,#ff6b35);box-shadow:0 8px 18px rgba(255,107,53,.32)}
+.mi-4{background:linear-gradient(135deg,#b06bff,#7c3aed);box-shadow:0 8px 18px rgba(124,58,237,.32)}
+.mi-5{background:linear-gradient(135deg,#2dd4f5,#0891b2);box-shadow:0 8px 18px rgba(8,145,178,.32)}
+.mi-6{background:linear-gradient(135deg,#ff77cc,#e0117f);box-shadow:0 8px 18px rgba(224,17,127,.32)}
+.mod-title{font-size:15.5px;font-weight:700;color:var(--navy);margin-bottom:3px}
+.mod-text{font-size:13px;color:var(--gray-600);line-height:1.55}
+.mock-wrap{border-radius:16px;box-shadow:0 20px 50px rgba(15,35,71,.22);position:sticky;top:96px}
+
+/* Iconos gradiente unificados (estilo módulos) */
+.g-green{background:linear-gradient(135deg,#00d4a0,#00a651);box-shadow:0 6px 14px rgba(0,166,81,.3);color:#fff}
+.g-blue{background:linear-gradient(135deg,#5b8def,#1b3a6b);box-shadow:0 6px 14px rgba(91,141,239,.3);color:#fff}
+.g-orange{background:linear-gradient(135deg,#ffa63d,#ff6b35);box-shadow:0 6px 14px rgba(255,107,53,.3);color:#fff}
+.g-purple{background:linear-gradient(135deg,#b06bff,#7c3aed);box-shadow:0 6px 14px rgba(124,58,237,.3);color:#fff}
+.g-cyan{background:linear-gradient(135deg,#2dd4f5,#0891b2);box-shadow:0 6px 14px rgba(8,145,178,.3);color:#fff}
+.g-pink{background:linear-gradient(135deg,#ff77cc,#e0117f);box-shadow:0 6px 14px rgba(224,17,127,.3);color:#fff}
+
+/* Empieza en 3 pasos (imagen + lista) */
+.pasos-grid{align-items:center;gap:40px;margin-top:8px}
+.step-list{display:flex;flex-direction:column;gap:18px}
+.step-row{display:flex;gap:16px;align-items:flex-start}
+.step-row .feat-icon{margin:0}
+
+/* Mockup: Escáner de facturas IA */
+.scan-row{display:flex;justify-content:space-between;gap:12px;padding:9px 2px;border-bottom:1px solid rgba(255,255,255,.08);font-size:12.5px;color:rgba(255,255,255,.55)}
+.scan-row b{color:#fff;font-weight:700}
+.scan-row.total{border-bottom:none;padding-top:12px}
+.scan-row.total b{color:#18e39a;font-size:16px}
+.scan-tag{border-radius:9px;padding:9px 12px;font-size:12px;font-weight:700;margin-top:9px;display:flex;align-items:center;gap:7px}
+.scan-tag.detr{background:rgba(45,212,245,.12);color:#7fe3ff;border:1px solid rgba(45,212,245,.28)}
+.scan-tag.ok{background:rgba(24,227,154,.12);color:#9fffd9;border:1px solid rgba(24,227,154,.3)}
+
+/* FAQ con mockup de agenda */
+.faq-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:start}
+.ag-item{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:11px 13px;margin-bottom:9px}
+.ag-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.ag-dot.red{background:#ff5a5a;box-shadow:0 0 8px #ff5a5a}
+.ag-dot.amber{background:#ffb43d}
+.ag-dot.green{background:#18e39a}
+.ag-body{flex:1;min-width:0}
+.ag-title{color:#fff;font-size:12.5px;font-weight:600}
+.ag-meta{color:rgba(255,255,255,.5);font-size:11px;margin-top:1px}
+.ag-badge{font-size:9px;font-weight:800;padding:2px 7px;border-radius:4px;background:#d92d20;color:#fff;flex-shrink:0}
 
 /* ALERTS BAND */
 .alerts-band{background:#f0fdf4;border-top:4px solid var(--green);border-bottom:1px solid #b3e6cc;padding:20px 0}
 .alerts-row{display:flex;gap:0;flex-wrap:wrap}
 .alert-item{flex:1;min-width:200px;display:flex;align-items:center;gap:14px;padding:12px 24px;border-right:1px solid #b3e6cc}
 .alert-item:last-child{border-right:none}
-.alert-icon{font-size:28px;flex-shrink:0}
+.alert-icon{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0}
 .alert-num{font-size:22px;font-weight:900;color:var(--navy);line-height:1}
 .alert-label{font-size:12px;color:var(--gray-600);margin-top:2px}
 
 /* FEATURE CARDS */
 .feat-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--r);padding:28px;transition:box-shadow .2s,transform .15s}
 .feat-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
-.feat-icon{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:16px}
-.feat-icon.green{background:var(--green-lt)}
-.feat-icon.navy{background:#e8eef7}
-.feat-icon.amber{background:var(--accent-lt)}
+.feat-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;margin-bottom:16px}
 .feat-title{font-size:16px;font-weight:700;color:var(--navy);margin-bottom:8px}
 .feat-text{font-size:14px;color:var(--gray-600);line-height:1.6}
 
 /* RISK SECTION */
 .risk-section{background:linear-gradient(135deg,var(--navy-dk) 0%,var(--navy) 100%);color:white}
 .risk-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:24px}
-.risk-card-icon{font-size:32px;margin-bottom:12px}
+.risk-card-icon{width:56px;height:56px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:27px;margin-bottom:16px}
 .risk-card-title{font-size:15px;font-weight:700;color:white;margin-bottom:8px}
 .risk-card-text{font-size:13px;color:rgba(255,255,255,.65);line-height:1.6}
 .risk-card-amount{font-size:26px;font-weight:900;color:#f87171;margin:10px 0 4px}
@@ -159,7 +231,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(255,255,255,.96);backdrop-
 .faq-item.open .faq-a{display:block}
 
 /* CTA BANNER */
-.cta-banner{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dk) 100%);padding:70px 0;text-align:center}
+.cta-banner{background:radial-gradient(circle at 70% 30%,#16345f 0%,#0b1a33 50%,#070f1f 100%);padding:70px 0;text-align:center;position:relative;overflow:hidden}
+.cta-banner .container{position:relative;z-index:1}
 .cta-banner h2{font-size:clamp(24px,4vw,36px);font-weight:900;color:white;margin-bottom:14px}
 .cta-banner p{font-size:16px;color:rgba(255,255,255,.8);margin-bottom:32px}
 .cta-actions{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
@@ -182,13 +255,14 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 
 /* RESPONSIVE */
 @media(max-width:900px){
-  .grid-2,.grid-3,.pricing-grid,.footer-grid{grid-template-columns:1fr}
+  .grid-2,.grid-3,.pricing-grid,.footer-grid,.faq-grid{grid-template-columns:1fr}
   .grid-4{grid-template-columns:1fr 1fr}
   .nav-links{display:none}
   .hero{padding:60px 0}
   .alerts-row{flex-direction:column}
   .alert-item{border-right:none;border-bottom:1px solid #b3e6cc}
   .alert-item:last-child{border-bottom:none}
+  .mock-wrap{position:static;margin-top:24px}
 }
 @media(max-width:520px){
   .grid-4{grid-template-columns:1fr}
@@ -204,16 +278,15 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 <nav>
   <div class="nav-inner">
     <a href="/" class="nav-logo">
-      <div class="nav-logo-icon">📋</div>
+      <div class="nav-logo-icon"><img src="/robot.png" alt="DashBot" style="width:100%;height:100%;border-radius:50%;object-fit:cover"></div>
       <div class="nav-logo-text">
         <span class="nav-logo-name">Dashbot</span>
-        <span class="nav-logo-co">Dashcont Technology System Automatizacion SAC</span>
+        <span class="nav-logo-co">Dashcont Technology Automatizacion System SAC</span>
       </div>
     </a>
     <div class="nav-links">
-      <a href="#beneficios">Beneficios</a>
-      <a href="#riesgos">Riesgos</a>
-      <a href="#multas">Multas</a>
+      <a href="#modulos">Módulos</a>
+      <a href="#para-quien">Para quién</a>
       <a href="#como-funciona">Cómo funciona</a>
       <a href="#planes">Planes</a>
     </div>
@@ -226,35 +299,114 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 
 <!-- HERO -->
 <section class="hero">
+  <div class="hero-orbs"><span></span><span></span><span></span></div>
   <div class="container">
     <div class="grid-2">
       <div class="hero-content">
-        <div class="hero-label">🇵🇪 Para Contadores Peruanos</div>
-        <h1>Tu buzón SUNAT,<br><span>bajo control.</span><br>Sin vigilarlo tú.</h1>
-        <p class="hero-sub">Dashbot lee automáticamente tus notificaciones del buzón SOL, detecta urgencias, calcula multas potenciales y te avisa antes de que sea tarde.</p>
+        <div class="hero-label">🤖 Tu asistente contable con IA</div>
+        <h1>Deja que Dashbot te ayude con la <span>Gestión Tributaria.</span><br>Tú dedícate a crecer.</h1>
+        <p class="hero-sub">La plataforma peruana que vigila tu buzón SUNAT, arma tu agenda tributaria, controla tu planilla y extrae tus registros del SIRE — todo automático, en un solo lugar.</p>
         <div class="hero-actions">
-          <a href="/" class="btn btn-green btn-lg">🚀 Probar Dashbot gratis</a>
-          <a href="#como-funciona" class="btn btn-outline btn-lg" style="color:white;border-color:rgba(255,255,255,.35)">Ver cómo funciona</a>
+          <a href="/" class="btn btn-glow btn-lg">🚀 Probar gratis</a>
+          <a href="#modulos" class="btn btn-outline btn-lg" style="color:white;border-color:rgba(255,255,255,.35)">Ver los módulos</a>
         </div>
         <div class="hero-stats">
           <div class="hero-stat">
-            <span class="hero-stat-num">S/ 535+</span>
-            <span class="hero-stat-label">Multa mínima por declaración tardía</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">5 días</span>
-            <span class="hero-stat-label">Plazo típico para responder a SUNAT</span>
+            <span class="hero-stat-num">6 módulos</span>
+            <span class="hero-stat-label">Una sola plataforma, todo integrado</span>
           </div>
           <div class="hero-stat">
             <span class="hero-stat-num">24/7</span>
-            <span class="hero-stat-label">Monitoreo automático del buzón</span>
+            <span class="hero-stat-label">Trabaja mientras tú descansas</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-num">Cero multas</span>
+            <span class="hero-stat-label">Por plazos vencidos u olvidados</span>
           </div>
         </div>
       </div>
-      <div class="hero-img">
+      <div class="hero-robot">
+        <img src="/robot-full.png" alt="Dashbot, tu asistente contable con IA" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ALERTS BAND -->
+<div class="alerts-band">
+  <div class="container">
+    <div class="alerts-row">
+      <div class="alert-item">
+        <div class="alert-icon g-green">📥</div>
+        <div>
+          <div class="alert-num">Buzón SUNAT</div>
+          <div class="alert-label">Vigilado 24/7 con alertas por WhatsApp y correo</div>
+        </div>
+      </div>
+      <div class="alert-item">
+        <div class="alert-icon g-blue">📆</div>
+        <div>
+          <div class="alert-num">Agenda al día</div>
+          <div class="alert-label">Vencimientos generados solos desde el cronograma</div>
+        </div>
+      </div>
+      <div class="alert-item">
+        <div class="alert-icon g-purple">👥</div>
+        <div>
+          <div class="alert-num">Planilla lista</div>
+          <div class="alert-label">Trabajadores 5ta y 4ta, alineado al PLAME</div>
+        </div>
+      </div>
+      <div class="alert-item">
+        <div class="alert-icon g-cyan">🛰️</div>
+        <div>
+          <div class="alert-num">SIRE en 1 clic</div>
+          <div class="alert-label">Compras y ventas desde la API oficial de SUNAT</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODULOS -->
+<section class="section" id="modulos">
+  <div class="container">
+    <div class="text-center">
+      <div class="tag">🧩 Todo en uno</div>
+      <h2 class="section-title">Una plataforma, <span class="hl">seis superpoderes</span></h2>
+      <p class="section-sub">Deja de saltar entre SUNAT, Excel y tu agenda. Dashbot une todo tu trabajo contable en un solo lugar, con inteligencia artificial de tu lado.</p>
+    </div>
+    <div class="grid-2 modulos-grid">
+      <div class="mod-list">
+        <div class="mod-item">
+          <div class="mod-icon mi-1">📥</div>
+          <div><div class="mod-title">Buzón SUNAT Inteligente</div><div class="mod-text">Lee tu buzón SOL, detecta multas y esquelas, y te avisa por WhatsApp antes del plazo.</div></div>
+        </div>
+        <div class="mod-item">
+          <div class="mod-icon mi-2">📆</div>
+          <div><div class="mod-title">Agenda Tributaria con IA</div><div class="mod-text">Kanban, calendario y horario. Tus declaraciones y SIRE se generan solas, con recordatorios.</div></div>
+        </div>
+        <div class="mod-item">
+          <div class="mod-icon mi-3">📸</div>
+          <div><div class="mod-title">Escáner de Facturas IA</div><div class="mod-text">Sube una factura: la IA extrae los datos, detecta detracción y la registra por ti.</div></div>
+        </div>
+        <div class="mod-item">
+          <div class="mod-icon mi-4">👥</div>
+          <div><div class="mod-title">Equipo y Planilla</div><div class="mod-text">Colaboradores, planilla de 5ta y 4ta, talento y contratos — alineado al PDT PLAME.</div></div>
+        </div>
+        <div class="mod-item">
+          <div class="mod-icon mi-5">🛰️</div>
+          <div><div class="mod-title">SIRE SUNAT Conectado</div><div class="mod-text">Registros de compras y ventas directo de la API oficial. Cargar, ver y registrar en segundos.</div></div>
+        </div>
+        <div class="mod-item">
+          <div class="mod-icon mi-6">📊</div>
+          <div><div class="mod-title">Reportes y Copiloto</div><div class="mod-text">Libro de comprobantes, resumen de IGV y un chatbot tributario que responde tus dudas.</div></div>
+        </div>
+      </div>
+      <div class="mock-wrap">
         <div class="mock-chat">
           <div class="mock-header">
-            <div style="background:rgba(255,255,255,.2);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:14px">📋</div>
+            <div class="mock-logo"><img src="/favicon.png" alt="Dashbot" /></div>
             <div>
               <div class="mock-header-title">Dashbot</div>
               <div class="mock-header-sub">RUC 20603448308 · Sincronizado ahora</div>
@@ -262,16 +414,16 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
             <div style="margin-left:auto;background:rgba(255,255,255,.2);border-radius:12px;padding:2px 8px;font-size:10px;color:white;font-weight:700">● EN LÍNEA</div>
           </div>
           <div class="mock-msg">
-            <div class="mock-avatar">🤖</div>
+            <div class="mock-avatar"><img src="/favicon.png" alt="" /></div>
             <div class="mock-bubble">
               ⚠️ Detecté <strong>2 notificaciones urgentes</strong> en tu buzón SUNAT:
               <div class="mock-card" style="margin-top:8px">
                 <div class="mock-card-title">📄 Baja de inscripción provisional<span class="mock-badge">URGENTE</span></div>
-                <div class="mock-card-meta">📅 15 ene 2024 · Ref: 0730050023836 · 📎 Adjunto</div>
+                <div class="mock-card-meta">📅 15 ene 2026 · Ref: 0730050023836 · 📎 Adjunto</div>
               </div>
               <div class="mock-card">
                 <div class="mock-card-title">📄 Esquela de citación – Auditoría<span class="mock-badge">URGENTE</span></div>
-                <div class="mock-card-meta">📅 14 ene 2024 · Ref: 0730050023837 · 📎 Adjunto</div>
+                <div class="mock-card-meta">📅 14 ene 2026 · Ref: 0730050023837 · 📎 Adjunto</div>
               </div>
               <div style="margin-top:8px;color:rgba(255,255,255,.6);font-size:11px">¿Quieres que te envíe el resumen por correo?</div>
             </div>
@@ -283,7 +435,7 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
             </div>
           </div>
           <div class="mock-msg">
-            <div class="mock-avatar">🤖</div>
+            <div class="mock-avatar"><img src="/favicon.png" alt="" /></div>
             <div class="mock-bubble">✅ Resumen enviado a <strong>estudio@contabilidad.com</strong>. También te avisaré por WhatsApp si hay nuevas alertas.</div>
           </div>
         </div>
@@ -292,256 +444,84 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   </div>
 </section>
 
-<!-- ALERTS BAND -->
-<div class="alerts-band">
+<!-- PARA QUIEN -->
+<section class="risk-section section" id="para-quien">
   <div class="container">
-    <div class="alerts-row">
-      <div class="alert-item">
-        <div class="alert-icon">⏰</div>
-        <div>
-          <div class="alert-num">S/ 535</div>
-          <div class="alert-label">Multa mínima por declaración tardía (Régimen General)</div>
-        </div>
-      </div>
-      <div class="alert-item">
-        <div class="alert-icon">📅</div>
-        <div>
-          <div class="alert-num">5 días</div>
-          <div class="alert-label">Plazo típico para responder esquelas SUNAT</div>
-        </div>
-      </div>
-      <div class="alert-item">
-        <div class="alert-icon">📊</div>
-        <div>
-          <div class="alert-num">50% UIT</div>
-          <div class="alert-label">Multa por no llevar contabilidad según exige la ley</div>
-        </div>
-      </div>
-      <div class="alert-item">
-        <div class="alert-icon">📈</div>
-        <div>
-          <div class="alert-num">+30%</div>
-          <div class="alert-label">Intereses adicionales si la deuda entra a cobranza coactiva</div>
-        </div>
-      </div>
+    <div class="text-center" style="margin-bottom:44px">
+      <div class="tag" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.9);border-color:rgba(255,255,255,.2)">🎯 Hecho para ti</div>
+      <h2 class="section-title" style="color:white">Dos negocios, <span class="hl-b">una misma tranquilidad</span></h2>
     </div>
-  </div>
-</div>
-
-<!-- BENEFICIOS -->
-<section class="section" id="beneficios">
-  <div class="container">
-    <div class="text-center">
-      <div class="tag">✅ Beneficios</div>
-      <h2 class="section-title">¿Por qué automatizar tu buzón SUNAT?</h2>
-      <p class="section-sub">Cada día que no revisas el buzón SOL, SUNAT puede estar contando plazos. Dashbot lo hace por ti, en tiempo real.</p>
-    </div>
-    <div class="grid-3">
-      <div class="feat-card">
-        <div class="feat-icon green">🔔</div>
-        <div class="feat-title">Alertas Instantáneas</div>
-        <div class="feat-text">Detecta notificaciones urgentes (cobranzas coactivas, citaciones, baja de oficio) y te avisa al instante por correo o WhatsApp antes de que venzan los plazos.</div>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon navy">🏢</div>
-        <div class="feat-title">Centralización Total</div>
-        <div class="feat-text">Consolida todas las notificaciones del buzón SOL en una interfaz tipo chat, clara y ordenada. Sin ingresar a SUNAT manualmente cada día.</div>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon green">✨</div>
-        <div class="feat-title">Resumen Ejecutivo IA</div>
-        <div class="feat-text">Genera automáticamente un resumen ejecutivo diario con lo más importante: urgencias, plazos próximos y acciones recomendadas por inteligencia artificial.</div>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon amber">📎</div>
-        <div class="feat-title">Adjuntos en un Click</div>
-        <div class="feat-text">Descarga y organiza los PDFs adjuntos de cada notificación directamente desde el chat, sin navegar por el complejo portal SOL.</div>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon green">🔒</div>
-        <div class="feat-title">Seguridad Garantizada</div>
-        <div class="feat-text">Las credenciales SOL nunca se almacenan en disco. Solo existen en memoria durante la sesión activa y se eliminan al cerrar sesión.</div>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon navy">📊</div>
-        <div class="feat-title">Trazabilidad Completa</div>
-        <div class="feat-text">Registro automático de cada sincronización, fecha de lectura, notificaciones vistas y acciones tomadas. Historial disponible para auditorías.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- RIESGOS -->
-<section class="risk-section section" id="riesgos">
-  <div class="container">
-    <div class="text-center" style="margin-bottom:48px">
-      <div class="tag" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.9);border-color:rgba(255,255,255,.2)">⚠️ Riesgos</div>
-      <h2 class="section-title" style="color:white">Lo que pasa cuando no lees<br>las notificaciones de SUNAT</h2>
-      <p class="section-sub" style="color:rgba(255,255,255,.6)">El buzón SOL tiene fuerza legal. Ignorarlo equivale a no responder a SUNAT, y las consecuencias son graves.</p>
-    </div>
-    <div class="grid-3">
-      <div class="risk-card">
-        <div class="risk-card-icon">⚖️</div>
-        <div class="risk-card-title">Notificación con Efectos Legales</div>
-        <div class="risk-card-text">Desde 2020, el buzón SOL tiene la misma validez que una notificación física. No abrir el mensaje no te exime de cumplir el plazo.</div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-card-icon">🏦</div>
-        <div class="risk-card-title">Cobranza Coactiva Automática</div>
-        <div class="risk-card-text">Si no respondes a una resolución de determinación, SUNAT inicia embargo de cuentas y retención de bienes sin aviso adicional.</div>
-        <div class="risk-card-amount">+30%</div>
-        <div class="risk-card-label">Intereses adicionales en coactiva</div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-card-icon">📄</div>
-        <div class="risk-card-title">Baja de RUC de Oficio</div>
-        <div class="risk-card-text">SUNAT puede dar de baja provisional tu inscripción sin que te enteres, bloqueando emisión de facturas y acceso a crédito fiscal.</div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-card-icon">🔍</div>
-        <div class="risk-card-title">Apertura de Fiscalización</div>
-        <div class="risk-card-text">Una citación no atendida activa automáticamente el proceso de fiscalización, que puede incluir revisión de hasta 4 años tributarios.</div>
-        <div class="risk-card-amount">4 años</div>
-        <div class="risk-card-label">Alcance de la fiscalización</div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-card-icon">📉</div>
-        <div class="risk-card-title">Pérdida del Régimen Tributario</div>
-        <div class="risk-card-text">Incumplimientos reiterados pueden forzar el cambio al Régimen General con sus mayores obligaciones formales y tasas impositivas.</div>
-      </div>
-      <div class="risk-card">
-        <div class="risk-card-icon">👥</div>
-        <div class="risk-card-title">Responsabilidad del Contador</div>
-        <div class="risk-card-text">Si el cliente sufre multas por notificaciones no atendidas, la responsabilidad recae sobre el estudio contable encargado de la supervisión.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- MULTAS -->
-<section class="section" id="multas" style="background:var(--gray-50)">
-  <div class="container">
     <div class="grid-2">
-      <div>
-        <div class="tag" style="background:var(--accent-lt);color:#92400e;border-color:#fde68a">💰 Tabla de Multas</div>
-        <h2 class="section-title">Multas frecuentes que Dashbot<br>te ayuda a evitar</h2>
-        <p style="font-size:15px;color:var(--gray-600);margin-bottom:28px;line-height:1.7">Las multas del Código Tributario se calculan en función de la UIT vigente (S/ 5,350 en 2024). Un solo descuido puede costar miles de soles.</p>
-        <div style="background:var(--green-lt);border:1px solid #b3e6cc;border-radius:var(--r-sm);padding:16px 20px;font-size:14px;color:var(--green-dk);line-height:1.7">
-          ⚠️ <strong>Importante:</strong> Las multas tienen gradualidad. Si te auto-detectas antes de que SUNAT te notifique, la rebaja puede llegar al 95%. Dashbot te avisa a tiempo.
+      <div class="risk-card" style="padding:32px">
+        <div class="risk-card-icon g-cyan">🧮</div>
+        <div class="risk-card-title" style="font-size:18px">Para el contador y el estudio</div>
+        <div class="risk-card-text" style="font-size:14px">Gestiona todos tus clientes desde un solo panel. Cada RUC con su buzón, su agenda y su planilla. Nunca más una multa por un plazo que se te pasó — y con historial completo para blindarte ante cualquier auditoría.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Multiempresa: todos tus RUCs en un lugar</div>
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Menos horas manuales, más clientes atendidos</div>
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Trazabilidad y respaldo ante fiscalizaciones</div>
         </div>
       </div>
-      <div>
-        <table class="multas-table">
-          <thead>
-            <tr>
-              <th>Infracción</th>
-              <th>Base Legal</th>
-              <th>Multa</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>No presentar declaración mensual</td>
-              <td>Art. 176 N°1</td>
-              <td class="multa-high">S/ 535 – S/ 6,688</td>
-            </tr>
-            <tr>
-              <td>Presentar declaración fuera de plazo</td>
-              <td>Art. 176 N°1</td>
-              <td class="multa-high">50% UIT</td>
-            </tr>
-            <tr>
-              <td>No llevar libros contables exigidos</td>
-              <td>Art. 175 N°1</td>
-              <td class="multa-high">50% UIT</td>
-            </tr>
-            <tr>
-              <td>No conservar libros y registros</td>
-              <td>Art. 175 N°7</td>
-              <td class="multa-med">30% UIT</td>
-            </tr>
-            <tr>
-              <td>No responder requerimiento SUNAT</td>
-              <td>Art. 177 N°5</td>
-              <td class="multa-med">30% UIT</td>
-            </tr>
-            <tr>
-              <td>Ocultar bienes o ingresos</td>
-              <td>Art. 178 N°1</td>
-              <td class="multa-high">50% del tributo omitido</td>
-            </tr>
-            <tr>
-              <td>Intereses moratorios (TIM)</td>
-              <td>Art. 33</td>
-              <td class="multa-high">1.2% mensual acumulado</td>
-            </tr>
-          </tbody>
-        </table>
-        <p style="font-size:11px;color:var(--gray-400);margin-top:8px">*UIT 2024: S/ 5,350. Multas sujetas a gradualidad según Resolución de Superintendencia.</p>
+      <div class="risk-card" style="padding:32px">
+        <div class="risk-card-icon g-orange">🏪</div>
+        <div class="risk-card-title" style="font-size:18px">Para el microempresario</div>
+        <div class="risk-card-text" style="font-size:14px">¿No tienes tiempo de vigilar SUNAT? Dashbot lo hace por ti. Entiende tus notificaciones en lenguaje claro, te avisa qué hacer y cuándo, y mantiene tu negocio al día sin que tengas que ser experto en tributación.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Sin jerga: la IA te explica qué significa cada cosa</div>
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Alertas a tu WhatsApp, donde ya estás</div>
+          <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.8)"><span>✓</span> Duermes tranquilo: nada se te vence</div>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- CÓMO FUNCIONA -->
-<section class="section" id="como-funciona">
+<section class="section" id="como-funciona" style="background:var(--gray-50)">
   <div class="container">
-    <div class="grid-2">
-      <div>
-        <div class="tag">⚙️ Proceso</div>
-        <h2 class="section-title">Automatización en<br>4 pasos simples</h2>
-        <div class="steps" style="margin-top:32px">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div class="step-body">
-              <div class="step-title">Ingresa tus credenciales SOL</div>
-              <div class="step-text">RUC, usuario y contraseña de SUNAT SOL. Nunca se guardan en disco — solo en memoria durante tu sesión activa.</div>
+    <div class="text-center">
+      <div class="tag">⚙️ Simple de verdad</div>
+      <h2 class="section-title">Empieza en <span class="hl">3 pasos</span></h2>
+      <p class="section-sub">Sin instalar nada. Sin curva de aprendizaje. En minutos Dashbot ya está trabajando por ti.</p>
+    </div>
+    <div class="grid-2 pasos-grid">
+      <div class="mock-wrap">
+        <div class="mock-chat">
+          <div class="mock-header" style="background:linear-gradient(135deg,#ffa63d,#ff6b35)">
+            <div class="mock-logo"><img src="/favicon.png" alt="Dashbot" /></div>
+            <div>
+              <div class="mock-header-title">Escáner de facturas · IA</div>
+              <div class="mock-header-sub">Analizando comprobante…</div>
             </div>
+            <div style="margin-left:auto;background:rgba(255,255,255,.2);border-radius:12px;padding:2px 8px;font-size:10px;color:white;font-weight:700">● LEÍDO</div>
           </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div class="step-body">
-              <div class="step-title">Dashbot accede a tu buzón</div>
-              <div class="step-text">El sistema navega automáticamente el portal SOL, abre el buzón electrónico y extrae todas las notificaciones nuevas sin que hagas nada.</div>
-            </div>
+          <div class="mock-card" style="border-left-color:#ff6b35;margin-bottom:12px">
+            <div class="mock-card-title">📄 Factura F055-4640</div>
+            <div class="mock-card-meta">Turismo Lab Group S.A.C.</div>
           </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div class="step-body">
-              <div class="step-title">Clasifica y prioriza lo urgente</div>
-              <div class="step-text">La IA detecta multas, citaciones, cobranzas coactivas y bajas de oficio, y las pone primero. Tú ves en segundos qué requiere acción inmediata.</div>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">4</div>
-            <div class="step-body">
-              <div class="step-title">Recibe el resumen y actúa</div>
-              <div class="step-text">Resumen ejecutivo enviado a tu correo o WhatsApp. Descarga adjuntos, marca como leído y mantén el historial para tu estudio contable.</div>
-            </div>
-          </div>
+          <div class="scan-row"><span>RUC emisor</span><b>20830743371</b></div>
+          <div class="scan-row"><span>Fecha emisión</span><b>25/02/2026</b></div>
+          <div class="scan-row"><span>Base imponible</span><b>S/ 273.44</b></div>
+          <div class="scan-row"><span>IGV (18%)</span><b>S/ 49.22</b></div>
+          <div class="scan-row total"><span>Total detectado</span><b>S/ 322.66</b></div>
+          <div class="scan-tag detr">💧 Sujeto a DETRACCIÓN · 12%</div>
+          <div class="scan-tag ok">✅ Comprobante válido · registrado en tu libro</div>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div style="background:linear-gradient(135deg,#3d1515 0%,#5c1f1f 100%);border-radius:var(--r);padding:28px;color:white">
-          <div style="font-size:13px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Sin Dashbot (Manual)</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Ingresar a SUNAT todos los días</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Revisar cada mensaje manualmente</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Riesgo de perder plazos críticos</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Sin historial estructurado</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.7)"><span>✗</span> Multas por descuido humano</div>
-          </div>
+      <div class="step-list">
+        <div class="step-row">
+          <div class="feat-icon g-green">1</div>
+          <div><div class="feat-title">Conecta tu RUC</div><div class="feat-text">Ingresas tus credenciales SOL (se guardan cifradas) y aceptas los términos. Listo, Dashbot ya tiene acceso seguro.</div></div>
         </div>
-        <div style="background:linear-gradient(135deg,#0f4c2a 0%,#16643a 100%);border-radius:var(--r);padding:28px;color:white">
-          <div style="font-size:13px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Con Dashbot (Automático)</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Sincronización automática 24/7</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Alertas instantáneas por correo y WhatsApp</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Urgencias priorizadas automáticamente</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Historial trazable para auditorías</div>
-            <div style="display:flex;gap:10px;font-size:13px;color:rgba(255,255,255,.85)"><span>✓</span> Cero multas por notificaciones perdidas</div>
-          </div>
+        <div class="step-row">
+          <div class="feat-icon g-blue">2</div>
+          <div><div class="feat-title">Dashbot hace la magia</div><div class="feat-text">Sincroniza tu buzón, genera tu agenda tributaria del año y deja lista tu planilla y tus reportes — todo automático.</div></div>
         </div>
+        <div class="step-row">
+          <div class="feat-icon g-orange">3</div>
+          <div><div class="feat-title">Tú solo decides</div><div class="feat-text">Recibes alertas por WhatsApp y correo, revisas desde el panel y actúas a tiempo. Nada se te vuelve a pasar.</div></div>
+        </div>
+        <a href="/" class="btn btn-glow btn-lg" style="margin-top:6px">🚀 Probar Dashbot gratis</a>
       </div>
     </div>
   </div>
@@ -552,57 +532,53 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
   <div class="container">
     <div class="text-center">
       <div class="tag">💎 Planes</div>
-      <h2 class="section-title">Planes para contadores y estudios en Perú</h2>
-      <p class="section-sub">Sin contrato anual forzoso. Cancela cuando quieras. Plan anual disponible con 2 meses bonificados.</p>
+      <h2 class="section-title">Un plan para <span class="hl">cada etapa</span></h2>
+      <p class="section-sub">Sin contrato forzoso. Cancela cuando quieras. Empieza gratis y paga solo cuando te enamores de la tranquilidad.</p>
     </div>
     <div class="pricing-grid">
       <div class="plan-card">
-        <div class="plan-name">Básico</div>
+        <div class="plan-name">Emprende</div>
         <div class="plan-price">S/ 149<span>/mes</span></div>
-        <div class="plan-desc">Para contadores independientes con hasta 10 RUCs.</div>
+        <div class="plan-desc">Para el microempresario que quiere dejar de preocuparse por SUNAT.</div>
         <ul class="plan-features">
-          <li>Hasta 10 RUCs monitoreados</li>
-          <li>Sincronización diaria automática</li>
-          <li>Alertas por correo electrónico</li>
-          <li>Resumen ejecutivo IA</li>
-          <li>Descarga de adjuntos</li>
-          <li>Historial 3 meses</li>
+          <li>Hasta 3 RUCs</li>
+          <li>Buzón SUNAT vigilado 24/7</li>
+          <li>Agenda tributaria automática</li>
+          <li>Escáner de facturas con IA</li>
+          <li>Alertas por correo y WhatsApp</li>
+          <li>Copiloto tributario que te explica todo</li>
         </ul>
-        <a href="#contacto" class="btn btn-outline" style="width:100%;justify-content:center">Solicitar demo</a>
+        <a href="#contacto" class="btn btn-outline" style="width:100%;justify-content:center">Empezar</a>
         <p class="plan-note">Sin tarjeta de crédito requerida</p>
       </div>
       <div class="plan-card popular">
         <div class="popular-badge">⭐ Más popular</div>
-        <div class="plan-name">Profesional</div>
+        <div class="plan-name">Contador Pro</div>
         <div class="plan-price">S/ 299<span>/mes</span></div>
-        <div class="plan-desc">Para estudios contables con múltiples clientes.</div>
+        <div class="plan-desc">Para el contador que gestiona varios clientes sin perder el control.</div>
         <ul class="plan-features">
-          <li>Hasta 50 RUCs monitoreados</li>
-          <li>Sincronización en tiempo real</li>
-          <li>Alertas por correo y WhatsApp</li>
-          <li>Resumen ejecutivo IA avanzado</li>
-          <li>Clasificación automática de urgencias</li>
-          <li>Descarga masiva de adjuntos</li>
-          <li>Historial 12 meses</li>
+          <li>Hasta 30 RUCs</li>
+          <li>Todo lo del plan Emprende</li>
+          <li>Módulo Equipo y Planilla (PLAME)</li>
+          <li>SIRE SUNAT: compras y ventas</li>
+          <li>Reportes y libro de comprobantes</li>
+          <li>Historial completo para auditorías</li>
           <li>Soporte prioritario</li>
         </ul>
         <a href="#contacto" class="btn btn-green" style="width:100%;justify-content:center">Comenzar ahora</a>
         <p class="plan-note">Sin tarjeta de crédito requerida</p>
       </div>
       <div class="plan-card">
-        <div class="plan-name">Estudio Pro</div>
+        <div class="plan-name">Estudio</div>
         <div class="plan-price">S/ 599<span>/mes</span></div>
-        <div class="plan-desc">Para grandes estudios y corporaciones con muchos RUCs.</div>
+        <div class="plan-desc">Para estudios contables y corporaciones con muchos clientes.</div>
         <ul class="plan-features">
           <li>RUCs ilimitados</li>
-          <li>Sincronización en tiempo real</li>
-          <li>Alertas multi-canal (correo, WhatsApp, SMS)</li>
-          <li>Resumen ejecutivo IA premium</li>
-          <li>Dashboard gerencial</li>
-          <li>API de integración</li>
-          <li>Historial ilimitado</li>
-          <li>Gerente de cuenta dedicado</li>
+          <li>Todo lo del plan Contador Pro</li>
+          <li>Multiusuario para tu equipo</li>
           <li>Onboarding personalizado</li>
+          <li>Gerente de cuenta dedicado</li>
+          <li>Soporte preferente</li>
         </ul>
         <a href="#contacto" class="btn btn-navy" style="width:100%;justify-content:center">Solicitar evaluación</a>
         <p class="plan-note">Sin tarjeta de crédito requerida</p>
@@ -621,12 +597,13 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 
 <!-- FAQ -->
 <section class="section" id="faq">
-  <div class="container" style="max-width:780px">
+  <div class="container">
     <div class="text-center">
       <div class="tag">❓ FAQ</div>
-      <h2 class="section-title">Preguntas frecuentes</h2>
+      <h2 class="section-title">Preguntas <span class="hl">frecuentes</span></h2>
     </div>
-    <div style="margin-top:40px">
+    <div class="faq-grid" style="margin-top:40px">
+      <div>
       <div class="faq-item open">
         <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">¿Dashbot guarda mis credenciales de SUNAT SOL?</div>
         <div class="faq-a">No. Las credenciales (RUC, usuario y contraseña) nunca se almacenan en base de datos ni en disco. Solo existen en la memoria del servidor durante tu sesión activa. Al cerrar sesión o después de un tiempo de inactividad, se eliminan automáticamente.</div>
@@ -645,11 +622,46 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
       </div>
       <div class="faq-item">
         <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">¿Puedo gestionar varios RUCs de distintos clientes?</div>
-        <div class="faq-a">Sí. En los planes Profesional y Estudio Pro puedes gestionar múltiples RUCs desde un solo panel. Cada cliente tiene sus notificaciones separadas y puedes enviar resúmenes individualizados a cada uno.</div>
+        <div class="faq-a">Sí. Dashbot es multiempresa: gestionas todos tus RUCs desde un solo panel, cada cliente con su buzón, su agenda y su planilla separados. Ideal para contadores y estudios que atienden a varios negocios.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">Soy microempresario y no sé de tributación. ¿Me sirve?</div>
+        <div class="faq-a">Totalmente. Dashbot está pensado para que no necesites ser experto: la IA te explica cada notificación en lenguaje simple, te dice qué hacer y cuándo, y te avisa por WhatsApp. Tú te enfocas en tu negocio y dejas que el bot vigile a SUNAT.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q" onclick="this.parentElement.classList.toggle('open')">¿Dashbot funciona si SUNAT tiene caída del sistema?</div>
         <div class="faq-a">Si SUNAT tiene mantenimiento o caída, Dashbot registra el intento fallido y reintenta automáticamente cada 30 minutos. Recibirás una notificación si el sistema estuvo inaccesible por más de 2 horas.</div>
+      </div>
+      </div><!-- /columna preguntas -->
+
+      <div class="mock-wrap">
+        <div class="mock-chat">
+          <div class="mock-header" style="background:linear-gradient(135deg,#5b8def,#1b3a6b)">
+            <div class="mock-logo"><img src="/favicon.png" alt="Dashbot" /></div>
+            <div>
+              <div class="mock-header-title">Agenda Tributaria</div>
+              <div class="mock-header-sub">Julio 2026 · 3 vencimientos</div>
+            </div>
+            <div style="margin-left:auto;background:rgba(255,255,255,.2);border-radius:12px;padding:2px 8px;font-size:11px;color:white;font-weight:700">🔔</div>
+          </div>
+          <div class="ag-item">
+            <div class="ag-dot red"></div>
+            <div class="ag-body"><div class="ag-title">Declaración IGV-Renta</div><div class="ag-meta">Vence en 3 días · 18 jul</div></div>
+            <div class="ag-badge">URGENTE</div>
+          </div>
+          <div class="ag-item">
+            <div class="ag-dot amber"></div>
+            <div class="ag-body"><div class="ag-title">SIRE Compras / Ventas</div><div class="ag-meta">Vence en 7 días · 22 jul</div></div>
+          </div>
+          <div class="ag-item">
+            <div class="ag-dot green"></div>
+            <div class="ag-body"><div class="ag-title">Planilla PLAME</div><div class="ag-meta">Declarado ✓ · al día</div></div>
+          </div>
+          <div class="mock-msg" style="margin-top:12px">
+            <div class="mock-avatar"><img src="/favicon.png" alt="" /></div>
+            <div class="mock-bubble">🔔 Te recuerdo: la <strong>Declaración IGV</strong> vence en 3 días. Ya la puse en tu Kanban. ¿La programamos?</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -657,11 +669,12 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
 
 <!-- CTA BANNER -->
 <section class="cta-banner" id="contacto">
+  <div class="hero-orbs"><span></span><span></span><span></span></div>
   <div class="container">
-    <h2>¿Listo para tener el buzón SUNAT bajo control?</h2>
-    <p>Únete a los estudios contables que ya automatizan con Dashbot.<br>Prueba gratis por 14 días, sin tarjeta de crédito.</p>
+    <h2>Tu contabilidad, <span class="hl-b">en piloto automático</span></h2>
+    <p>Únete a los contadores y emprendedores que ya duermen tranquilos con Dashbot.<br>Prueba gratis, sin tarjeta de crédito.</p>
     <div class="cta-actions">
-      <a href="/" class="btn btn-lg" style="background:var(--green);color:white">🚀 Probar Dashbot gratis</a>
+      <a href="/" class="btn btn-glow btn-lg">🚀 Probar Dashbot gratis</a>
       <a href="https://wa.me/51999999999?text=Hola%2C%20quiero%20una%20demo%20de%20Dashbot" class="btn btn-wa btn-lg" target="_blank">💬 Solicitar demo por WhatsApp</a>
     </div>
   </div>
@@ -673,13 +686,13 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
     <div class="footer-grid">
       <div>
         <div class="footer-brand-name">Dashbot</div>
-        <div class="footer-brand-co">Dashcont Technology System Automatizacion SAC</div>
-        <p class="footer-brand-text">Automatizamos la lectura del buzón electrónico SUNAT para contadores y estudios contables peruanos. Notificaciones críticas, cero descuidos, cero multas.</p>
+        <div class="footer-brand-co">Dashcont Technology Automatizacion System SAC</div>
+        <p class="footer-brand-text">Tu asistente contable con IA. Automatizamos el buzón SUNAT, la agenda tributaria, la planilla y el SIRE para contadores, estudios y microempresarios del Perú. Cero descuidos, cero multas.</p>
       </div>
       <div>
         <div class="footer-col-title">Producto</div>
         <div class="footer-links">
-          <a href="#beneficios">Beneficios</a>
+          <a href="#modulos">Módulos</a>
           <a href="#como-funciona">Cómo funciona</a>
           <a href="#planes">Planes y precios</a>
           <a href="/">Demo gratuita</a>
@@ -688,16 +701,16 @@ footer{background:var(--navy);color:rgba(255,255,255,.65);padding:48px 0 28px}
       <div>
         <div class="footer-col-title">Información</div>
         <div class="footer-links">
-          <a href="#riesgos">Riesgos SUNAT</a>
-          <a href="#multas">Tabla de multas</a>
+          <a href="#para-quien">Para quién</a>
           <a href="#faq">Preguntas frecuentes</a>
           <a href="#contacto">Contacto</a>
+          <a href="/terminos">Términos y privacidad</a>
         </div>
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© 2024 Dashcont Technology System Automatizacion SAC. Todos los derechos reservados.</span>
-      <span>Hecho en Perú 🇵🇪 para contadores peruanos</span>
+      <span>© 2026 Dashcont Technology Automatizacion System SAC. Todos los derechos reservados.</span>
+      <span>Hecho en Perú 🇵🇪 para contadores y emprendedores</span>
     </div>
   </div>
 </footer>

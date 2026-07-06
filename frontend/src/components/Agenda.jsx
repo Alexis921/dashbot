@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import EscanearDoc from './EscanearDoc'
 import ObligacionPage from './ObligacionPage'
 import ConfirmModal from './ConfirmModal'
 import {
   apiListObligaciones, apiListEmpresas, apiGenerarObligaciones,
   apiUpdateObligacion, apiCreateObligacion, apiDeleteObligacion,
+  apiListHorario, apiSaveHorario, apiHorarioComentario, apiHorarioArchivo, apiHorarioArchivoDownload,
+  apiBuscarHorario, apiGenerarTodas,
 } from '../api'
 
 const TIPO_ICON = { declaracion_mensual: '📄', sire: '📚', detraccion: '💧', otro: '📌' }
@@ -127,8 +129,273 @@ function Calendario({ obligaciones, onClick }) {
   )
 }
 
-export default function Agenda() {
-  const [vista, setVista] = useState('kanban')
+const HORAS = Array.from({ length: 18 }, (_, i) => 6 + i) // 6:00 .. 23:00
+const horaLabel = (h) => `${h % 12 === 0 ? 12 : h % 12}:00 ${h < 12 ? 'am' : 'pm'}`
+const addDias = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10) }
+const fmtDiaLargo = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-PE', { weekday: 'long', day: '2-digit', month: 'long' })
+const CATS = [
+  { key: 'declaraciones', label: 'Declaraciones', color: '#2563eb' },
+  { key: 'reuniones', label: 'Reuniones', color: '#0a9d63' },
+  { key: 'tramites', label: 'Trámites', color: '#d97706' },
+  { key: 'clientes', label: 'Clientes', color: '#7c3aed' },
+  { key: 'personal', label: 'Personal', color: '#db2777' },
+  { key: 'otro', label: 'Otro', color: '#64748b' },
+]
+const fmtCom = (iso) => { try { return new Date(iso).toLocaleString('es-PE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) } catch { return '' } }
+const fmtSize = (b) => !b ? '' : b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`
+
+function BloqueModal({ fecha, hora, bloque, onClose, onSaved }) {
+  const [actividad, setActividad] = useState(bloque?.actividad || '')
+  const [categoria, setCategoria] = useState(bloque?.categoria || '')
+  const [recordatorio, setRecordatorio] = useState(bloque?.recordatorio || '')
+  const [comentarios, setComentarios] = useState(bloque?.comentarios || [])
+  const [archivos, setArchivos] = useState(bloque?.archivos || [])
+  const [nuevoCom, setNuevoCom] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [subiendo, setSubiendo] = useState(false)
+  const [bajando, setBajando] = useState('')
+  const fileRef = useRef(null)
+
+  async function guardar() {
+    setSaving(true)
+    try {
+      const cat = CATS.find((c) => c.key === categoria)
+      const d = await apiSaveHorario({ fecha, hora, actividad: actividad.trim(), categoria, color: cat?.color || '', recordatorio })
+      onSaved(d.bloque || {}); onClose()
+    } catch (e) { alert(`⚠️ ${e.message}`) } finally { setSaving(false) }
+  }
+  async function addComentario() {
+    if (!nuevoCom.trim()) return
+    try { const d = await apiHorarioComentario(fecha, hora, nuevoCom.trim()); setComentarios(d.bloque.comentarios || []); setNuevoCom(''); onSaved(d.bloque) }
+    catch (e) { alert(`⚠️ ${e.message}`) }
+  }
+  async function subir(e) {
+    const file = e.target.files?.[0]; if (!file) return
+    setSubiendo(true)
+    try { const d = await apiHorarioArchivo(fecha, hora, file); setArchivos(d.bloque.archivos || []); onSaved(d.bloque) }
+    catch (e) { alert(`⚠️ ${e.message}`) } finally { setSubiendo(false) }
+  }
+  async function bajar(a) {
+    setBajando(a.fid)
+    try { await apiHorarioArchivoDownload(a.fid, a.nombre) } catch (e) { alert(`⚠️ ${e.message}`) } finally { setBajando('') }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal colab-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+        <h3>🕒 {horaLabel(hora)} · Detalle</h3>
+        <div className="form-group"><label className="form-label">Actividad</label>
+          <input className="form-input" value={actividad} onChange={(e) => setActividad(e.target.value)} placeholder="¿Qué harás en esta hora?" /></div>
+
+        <div className="colab-sec">Categoría (color)</div>
+        <div className="hor-cats">
+          {CATS.map((c) => (
+            <button key={c.key} type="button" className="hor-cat"
+              style={categoria === c.key ? { borderColor: c.color, background: c.color + '18', color: c.color } : undefined}
+              onClick={() => setCategoria(categoria === c.key ? '' : c.key)}>
+              <span className="dot" style={{ background: c.color }} />{c.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="form-group" style={{ marginTop: 14 }}><label className="form-label">🔔 Recordatorio (hora)</label>
+          <input className="form-input" type="time" value={recordatorio} onChange={(e) => setRecordatorio(e.target.value)} style={{ width: 150 }} /></div>
+
+        <div className="colab-sec">💬 Comentarios</div>
+        {comentarios.length > 0 && (
+          <div className="hor-com-list">
+            {comentarios.map((c, i) => <div key={i} className="hor-com">{c.texto}<div className="hor-com-f">{fmtCom(c.fecha)}</div></div>)}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="form-input" value={nuevoCom} onChange={(e) => setNuevoCom(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addComentario()} placeholder="Agregar un comentario…" style={{ flex: 1 }} />
+          <button className="btn-secondary" onClick={addComentario} style={{ flex: 'none' }}>Añadir</button>
+        </div>
+
+        <div className="colab-sec">📎 Archivos y fotos</div>
+        {archivos.length > 0 && (
+          <div className="hor-com-list">
+            {archivos.map((a) => (
+              <div key={a.fid} className="hor-file">
+                <span>📄 {a.nombre} <span style={{ color: 'var(--gray-500)' }}>{fmtSize(a.tamano)}</span></span>
+                <button className="btn-icon" disabled={bajando === a.fid} onClick={() => bajar(a)}>{bajando === a.fid ? '⏳' : '⬇️'}</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" hidden onChange={subir} />
+        <button className="btn-secondary" style={{ width: '100%' }} onClick={() => fileRef.current?.click()} disabled={subiendo}>
+          {subiendo ? '⏳ Subiendo…' : '📂 Subir archivo o foto'}
+        </button>
+
+        <div className="modal-actions" style={{ marginTop: 16 }}>
+          <button className="btn-secondary" onClick={onClose}>Cerrar</button>
+          <button className="btn-accent" onClick={guardar} disabled={saving}>{saving ? '⏳...' : '💾 Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const fmtCorta = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-PE', { weekday: 'short', day: '2-digit', month: 'short' })
+
+function HorarioBot({ onJump }) {
+  const [q, setQ] = useState('')
+  const [buscando, setBuscando] = useState(false)
+  const [res, setRes] = useState(null) // null = sin búsqueda aún
+  const [ultimaQ, setUltimaQ] = useState('')
+
+  async function buscar(texto) {
+    const query = (texto ?? q).trim()
+    if (query.length < 2 || buscando) return
+    setBuscando(true)
+    try {
+      const d = await apiBuscarHorario(query)
+      setRes(d.resultados || []); setUltimaQ(query)
+    } catch (_) { setRes([]) } finally { setBuscando(false) }
+  }
+
+  return (
+    <div className="hbot">
+      <div className="hbot-head">
+        <div className="hbot-avatar"><img src="/robot.png" alt="DashBot" className="hbot-img" /><span className="hbot-ring" /></div>
+        <div>
+          <div className="hbot-title">Asistente de agenda</div>
+          <div className="hbot-sub"><span className="cm-online" />Busca en todos tus apuntes</div>
+        </div>
+      </div>
+
+      <div className="hbot-in">
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && buscar()}
+          placeholder="Ej. facturas, declaración, reunión…" disabled={buscando} />
+        <button onClick={() => buscar()} disabled={buscando || q.trim().length < 2}>{buscando ? '⏳' : '🔍'}</button>
+      </div>
+
+      <div className="hbot-body">
+        {res === null ? (
+          <div className="hbot-empty">
+            <p>Escribe una palabra y buscaré entre todo lo que anotaste en tu horario — actividades y comentarios de cualquier día.</p>
+            <div className="hbot-tips">
+              {['facturas', 'declaración', 'reunión'].map((t) => (
+                <button key={t} className="hbot-tip" onClick={() => { setQ(t); buscar(t) }}>{t}</button>
+              ))}
+            </div>
+          </div>
+        ) : res.length === 0 ? (
+          <div className="hbot-msg">🤖 No encontré apuntes con «{ultimaQ}». Prueba con otra palabra.</div>
+        ) : (
+          <>
+            <div className="hbot-msg">🤖 Encontré <strong>{res.length}</strong> apunte{res.length !== 1 ? 's' : ''} con «{ultimaQ}»:</div>
+            <div className="hbot-res">
+              {res.map((b) => (
+                <button key={`${b.fecha}-${b.hora}`} className="hbot-item" onClick={() => onJump(b.fecha)}
+                  style={b.color ? { borderLeftColor: b.color } : undefined}>
+                  <div className="hbot-item-top">
+                    <span className="hbot-item-f">{fmtCorta(b.fecha)}</span>
+                    <span className="hbot-item-h">{horaLabel(b.hora)}</span>
+                  </div>
+                  <div className="hbot-item-t">{b.actividad || (b.comentarios?.[0]?.texto ?? '—')}</div>
+                  <div className="hbot-item-meta">
+                    {b.comentarios?.length > 0 && <span>💬 {b.comentarios.length}</span>}
+                    {b.archivos?.length > 0 && <span>📎 {b.archivos.length}</span>}
+                    {b.recordatorio && <span>🔔 {b.recordatorio}</span>}
+                    <span className="hbot-item-go">Ir al día →</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Horario({ obligaciones, filtroEmp, onOpen }) {
+  const hoy = new Date().toISOString().slice(0, 10)
+  const [fecha, setFecha] = useState(hoy)
+  const [bloques, setBloques] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [rev, setRev] = useState(0)
+  const [detalle, setDetalle] = useState(null)
+  const horaActual = new Date().getHours()
+
+  const cargar = useCallback(() => {
+    setLoading(true)
+    apiListHorario(fecha).then((d) => {
+      const map = {}; (d.bloques || []).forEach((b) => { map[b.hora] = b })
+      setBloques(map)
+    }).catch(() => {}).finally(() => setLoading(false))
+  }, [fecha])
+  useEffect(() => { cargar() }, [cargar])
+
+  async function guardarActividad(hora, actividad) {
+    if ((bloques[hora]?.actividad || '') === actividad) return
+    try { const d = await apiSaveHorario({ fecha, hora, actividad, empresa_id: filtroEmp || null }); setBloques((b) => ({ ...b, [hora]: d.bloque })) } catch (_) {}
+  }
+  function onBloqueSaved(hora, bloque) {
+    setBloques((b) => ({ ...b, [hora]: bloque })); setRev((r) => r + 1)
+  }
+
+  const delDia = obligaciones.filter((o) => o.fecha_vencimiento === fecha)
+
+  return (
+    <div className="hor">
+      <div className="hor-bar">
+        <button className="cal-nav" onClick={() => setFecha((f) => addDias(f, -1))}>‹</button>
+        <div className="hor-fecha">
+          <input type="date" className="form-input" value={fecha} onChange={(e) => setFecha(e.target.value)} style={{ width: 160 }} />
+          <span className="hor-dia">{fmtDiaLargo(fecha)}</span>
+        </div>
+        <button className="cal-nav" onClick={() => setFecha((f) => addDias(f, 1))}>›</button>
+        {fecha !== hoy && <button className="btn-secondary hor-hoy" onClick={() => setFecha(hoy)}>Hoy</button>}
+      </div>
+
+      {delDia.length > 0 && (
+        <div className="hor-venc">
+          <span className="hor-venc-lbl">📅 Vence hoy:</span>
+          {delDia.map((o) => (
+            <button key={o.id} className="hor-venc-chip" onClick={() => onOpen(o)}>{TIPO_ICON[o.tipo] || '📌'} {o.titulo}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="hor-cols">
+        {loading ? <div className="ag-empty" style={{ flex: 1 }}>Cargando…</div> : (
+          <div className="hor-grid" key={`${fecha}-${rev}`}>
+            {HORAS.map((h) => {
+              const b = bloques[h]
+              return (
+                <div key={h} className={`hor-row ${fecha === hoy && h === horaActual ? 'now' : ''}`}
+                  style={b?.color ? { borderLeft: `4px solid ${b.color}` } : undefined}>
+                  <div className="hor-hora">{horaLabel(h)}</div>
+                  <input className="hor-input" defaultValue={b?.actividad || ''} placeholder="—"
+                    onBlur={(e) => guardarActividad(h, e.target.value.trim())}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur() }} />
+                  <div className="hor-meta">
+                    {b?.recordatorio && <span className="hor-badge" title={`Recordatorio ${b.recordatorio}`}>🔔</span>}
+                    {b?.comentarios?.length > 0 && <span className="hor-badge">💬 {b.comentarios.length}</span>}
+                    {b?.archivos?.length > 0 && <span className="hor-badge">📎 {b.archivos.length}</span>}
+                    <button className="hor-detail" onClick={() => setDetalle(h)}>Detalle</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <HorarioBot onJump={setFecha} />
+      </div>
+
+      {detalle != null && <BloqueModal fecha={fecha} hora={detalle} bloque={bloques[detalle]}
+        onClose={() => setDetalle(null)} onSaved={(bl) => onBloqueSaved(detalle, bl)} />}
+    </div>
+  )
+}
+
+export default function Agenda({ initialView = 'kanban' }) {
+  const [vista, setVista] = useState(initialView)
   const [obligaciones, setObligaciones] = useState([])
   const [estados, setEstados] = useState([])
   const [empresas, setEmpresas] = useState([])
@@ -172,13 +439,20 @@ export default function Agenda() {
     }
   }
   async function generar() {
-    const empId = filtroEmp || empresas[0]?.id
-    if (!empId) return alert('Primero registra una empresa.')
+    if (!empresas.length) return alert('Primero registra una empresa.')
     setGenerando(true)
     try {
-      const d = await apiGenerarObligaciones(empId)
-      if (d.success) { await load(); alert(`✓ ${d.creadas} obligación(es) generada(s) desde el cronograma.`) }
-      else alert(`⚠️ ${d.error}`)
+      // Con filtro: solo esa empresa. Sin filtro: TODAS las empresas del usuario.
+      const d = filtroEmp ? await apiGenerarObligaciones(filtroEmp) : await apiGenerarTodas()
+      if (d.success) {
+        await load()
+        let msg = `✓ ${d.creadas} obligación(es) generada(s) desde el cronograma.`
+        if (d.fallidas) {
+          const conError = (d.detalle || []).filter((x) => !x.success).map((x) => x.empresa).join(', ')
+          msg += `\n⚠️ SUNAT no respondió para: ${conError}. Vuelve a intentar en unos segundos.`
+        }
+        alert(msg)
+      } else alert(`⚠️ ${d.error}`)
     } catch (e) { alert(`⚠️ ${e.message}`) } finally { setGenerando(false) }
   }
 
@@ -203,7 +477,7 @@ export default function Agenda() {
 
       <div className="ag-toolbar">
         <div className="ag-tabs">
-          {[['kanban', '▦ Kanban'], ['calendario', '📅 Calendario'], ['agenda', '☰ Agenda']].map(([k, l]) => (
+          {[['kanban', '▦ Kanban Contable'], ['calendario', '📅 Calendario Tributario'], ['horario', '🕒 Horario Contable']].map(([k, l]) => (
             <button key={k} className={`ag-tab ${vista === k ? 'active' : ''}`} onClick={() => setVista(k)}>{l}</button>
           ))}
         </div>
@@ -213,7 +487,9 @@ export default function Agenda() {
         </select>
       </div>
 
-      {loading ? <div className="ag-empty">Cargando...</div>
+      {vista === 'horario' ? (
+        <Horario obligaciones={obligaciones} filtroEmp={filtroEmp} onOpen={setDetalle} />
+      ) : loading ? <div className="ag-empty">Cargando...</div>
         : obligaciones.length === 0 ? (
           <div className="ag-empty">
             <div style={{ fontSize: 40, marginBottom: 10 }}>📆</div>
@@ -237,27 +513,8 @@ export default function Agenda() {
               )
             })}
           </div>
-        ) : vista === 'calendario' ? (
-          <Calendario obligaciones={obligaciones} onClick={setDetalle} />
         ) : (
-          <div className="ag-list">
-            {[...obligaciones].sort((a, b) => (a.fecha_vencimiento || '').localeCompare(b.fecha_vencimiento || '')).map((o) => {
-              const p = PRIO[o.prioridad] || PRIO.media
-              const venc = o.dias_restantes != null && o.dias_restantes < 0 && !['pagado', 'declarado', 'archivado'].includes(o.estado)
-              return (
-                <div key={o.id} className="ag-list-row" onClick={() => setDetalle(o)}>
-                  <span className="ag-list-icon">{TIPO_ICON[o.tipo] || '📌'}</span>
-                  <div style={{ flex: 1 }}>
-                    <div className="ag-list-title">{o.titulo}</div>
-                    <div className="ag-list-sub">{o.empresa} {o.empresa && o.periodo ? '·' : ''} {o.periodo}</div>
-                  </div>
-                  <span className="ag-prio" style={{ background: p.bg, color: p.c }}>{p.t}</span>
-                  <span className={`ag-list-date ${venc ? 'venc' : ''}`}>{fmtFecha(o.fecha_vencimiento)}</span>
-                  <span className="ag-list-estado">{estados.find((s) => s.key === o.estado)?.label}</span>
-                </div>
-              )
-            })}
-          </div>
+          <Calendario obligaciones={obligaciones} onClick={setDetalle} />
         )}
 
       {showNueva && <NuevaModal empresas={empresas} onClose={() => setShowNueva(false)}

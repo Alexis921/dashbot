@@ -45,6 +45,14 @@ export async function apiMe() {
   return req('/api/auth/me')
 }
 
+export async function apiUpdateProfile(data) {
+  return req('/api/auth/profile', { method: 'PUT', body: data })
+}
+
+export async function apiChangePassword(actual, nueva) {
+  return req('/api/auth/change-password', { method: 'POST', body: { actual, nueva } })
+}
+
 // ── Empresas ───────────────────────────────────────────────
 export async function apiListEmpresas() {
   return req('/api/empresas')
@@ -54,10 +62,10 @@ export async function apiLookupRuc(ruc) {
   return req(`/api/ruc/${ruc}`)
 }
 
-export async function apiCreateEmpresa({ ruc, razon_social, alias, sol_usuario, sol_password }) {
+export async function apiCreateEmpresa({ ruc, razon_social, alias, sol_usuario, sol_password, acepto_terminos }) {
   return req('/api/empresas', {
     method: 'POST',
-    body: { ruc, razon_social, alias, sol_usuario, sol_password },
+    body: { ruc, razon_social, alias, sol_usuario, sol_password, acepto_terminos },
   })
 }
 
@@ -125,6 +133,11 @@ export async function apiGenerarObligaciones(empresaId, year) {
   return req(`/api/empresas/${empresaId}/obligaciones/generar${q}`, { method: 'POST' })
 }
 
+export async function apiGenerarTodas(year) {
+  const q = year ? `?year=${year}` : ''
+  return req(`/api/obligaciones/generar-todas${q}`, { method: 'POST' })
+}
+
 export async function apiCreateObligacion(data) {
   return req('/api/obligaciones', { method: 'POST', body: data })
 }
@@ -186,6 +199,126 @@ export async function apiAnalizarDocumento(file) {
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.detail || 'No se pudo analizar el documento')
   return data
+}
+
+// ── Documentos del colaborador (Equipo · Contratos y documentos) ──
+export async function apiListDocumentos(colaboradorId = 0, empresaId = 0) {
+  const qs = new URLSearchParams()
+  if (colaboradorId) qs.set('colaborador_id', colaboradorId)
+  if (empresaId) qs.set('empresa_id', empresaId)
+  return req(`/api/equipo/documentos?${qs.toString()}`)
+}
+
+export async function apiUploadDocumento({ colaboradorId, empresaId, colaboradorNombre, tipo, titulo, descripcion, file }) {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('colaborador_id', colaboradorId || 0)
+  fd.append('empresa_id', empresaId || 0)
+  fd.append('colaborador_nombre', colaboradorNombre || '')
+  fd.append('tipo', tipo || 'otro')
+  fd.append('titulo', titulo || '')
+  fd.append('descripcion', descripcion || '')
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/equipo/documentos`, {
+    method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'No se pudo subir el documento')
+  return data
+}
+
+export async function apiDownloadDocumento(docId, nombre) {
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/equipo/documentos/${docId}/download`, {
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+  })
+  if (!res.ok) throw new Error('No se pudo descargar')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = nombre || 'documento'; a.click()
+  URL.revokeObjectURL(url)
+}
+
+export async function apiDeleteDocumento(docId) {
+  return req(`/api/equipo/documentos/${docId}`, { method: 'DELETE' })
+}
+
+// ── Comprobantes (registro contable · compras/ventas) ──────
+export async function apiListComprobantes(empresaId = 0, operacion = '') {
+  const qs = new URLSearchParams()
+  if (empresaId) qs.set('empresa_id', empresaId)
+  if (operacion) qs.set('operacion', operacion)
+  return req(`/api/comprobantes?${qs.toString()}`)
+}
+
+export async function apiRegistrarComprobante(payload) {
+  return req('/api/comprobantes', { method: 'POST', body: payload })
+}
+
+export async function apiDeleteComprobante(id) {
+  return req(`/api/comprobantes/${id}`, { method: 'DELETE' })
+}
+
+// ── SIRE SUNAT (API oficial) ───────────────────────────────
+export async function apiSaveApiSunat(empresaId, clientId, clientSecret) {
+  return req(`/api/empresas/${empresaId}/api-sunat`, {
+    method: 'PUT', body: { client_id: clientId, client_secret: clientSecret },
+  })
+}
+
+export async function apiSireProbar(empresaId) {
+  return req('/api/sire/probar', { method: 'POST', body: { empresa_id: empresaId } })
+}
+
+export async function apiSireCargar(empresaId, periodo, libro) {
+  return req('/api/sire/cargar', { method: 'POST', body: { empresa_id: empresaId, periodo, libro } })
+}
+
+export async function apiSireRegistrar(empresaId, periodo, libro, comprobantes) {
+  return req('/api/sire/registrar', { method: 'POST', body: { empresa_id: empresaId, periodo, libro, comprobantes } })
+}
+
+// ── Horario Contable (agenda por horas) ────────────────────
+export async function apiListHorario(fecha) {
+  return req(`/api/horario?fecha=${encodeURIComponent(fecha)}`)
+}
+
+export async function apiSaveHorario(payload) {
+  return req('/api/horario', { method: 'POST', body: payload })
+}
+
+export async function apiHorarioComentario(fecha, hora, texto) {
+  return req('/api/horario/comentario', { method: 'POST', body: { fecha, hora, texto } })
+}
+
+export async function apiBuscarHorario(q) {
+  return req(`/api/horario/buscar?q=${encodeURIComponent(q)}`)
+}
+
+export async function apiHorarioArchivo(fecha, hora, file) {
+  const fd = new FormData()
+  fd.append('file', file); fd.append('fecha', fecha); fd.append('hora', hora)
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/horario/archivo`, {
+    method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'No se pudo subir el archivo')
+  return data
+}
+
+export async function apiHorarioArchivoDownload(fid, nombre) {
+  const t = getToken()
+  const res = await fetch(`${BASE}/api/horario/archivo/${fid}/download`, {
+    headers: t ? { Authorization: `Bearer ${t}` } : {},
+  })
+  if (!res.ok) throw new Error('No se pudo descargar')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = nombre || 'archivo'; a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ── Programación ───────────────────────────────────────────
@@ -303,6 +436,52 @@ export async function apiExportPlanilla(tipo, empresaId, periodo) {
 // ── Chatbot general (Centro de Mando) ──────────────────────
 export async function apiChat(pregunta, historial) {
   return req('/api/chat', { method: 'POST', body: { pregunta, historial } })
+}
+
+// ── Declaraciones y Pagos (PDT 621 + pagos SUNAT) ──────────
+async function uploadDecl(path, empresaId, file, modo) {
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`${BASE}${path}?empresa_id=${empresaId}&modo=${modo}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: fd,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.detail || 'Error al importar el archivo')
+  return data
+}
+
+export async function apiImportarPdt(empresaId, file, modo = 'cargar') {
+  return uploadDecl('/api/declaraciones/pdt/importar', empresaId, file, modo)
+}
+
+export async function apiListPdt(empresaId = 0, anio = 0) {
+  return req(`/api/declaraciones/pdt?empresa_id=${empresaId}&anio=${anio}`)
+}
+
+export async function apiUpdatePdt(id, data) {
+  return req(`/api/declaraciones/pdt/${id}`, { method: 'PUT', body: data })
+}
+
+export async function apiLimpiarPdt(empresaId = 0, anio = 0) {
+  return req(`/api/declaraciones/pdt?empresa_id=${empresaId}&anio=${anio}`, { method: 'DELETE' })
+}
+
+export async function apiImportarPagosSunat(empresaId, file, modo = 'cargar') {
+  return uploadDecl('/api/declaraciones/pagos/importar', empresaId, file, modo)
+}
+
+export async function apiListPagosSunat(empresaId = 0, anio = 0) {
+  return req(`/api/declaraciones/pagos?empresa_id=${empresaId}&anio=${anio}`)
+}
+
+export async function apiLimpiarPagosSunat(empresaId = 0, anio = 0) {
+  return req(`/api/declaraciones/pagos?empresa_id=${empresaId}&anio=${anio}`, { method: 'DELETE' })
+}
+
+export async function apiReporteDecl(empresaId = 0, anio = 0) {
+  return req(`/api/declaraciones/reporte?empresa_id=${empresaId}&anio=${anio}`)
 }
 
 // ── Demo ───────────────────────────────────────────────────

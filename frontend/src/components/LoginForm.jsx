@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { apiLogin, apiRegister } from '../api'
 
-export default function LoginForm({ onAuth, onDemo }) {
+export default function LoginForm({ onAuth, onDemo, aviso }) {
   const [mode, setMode] = useState('login') // 'login' | 'register'
   const [login, setLogin] = useState({ username: '', password: '' })
   const [reg, setReg] = useState({
@@ -52,9 +52,10 @@ export default function LoginForm({ onAuth, onDemo }) {
 
   return (
     <div className="login-screen">
+      <div className="login-bg"><span /><span /><span /></div>
       <div className="login-left">
         <div className="login-left-logo">
-          <div className="login-left-logo-icon">📋</div>
+          <div className="login-left-logo-icon"><img src="/robot.png" alt="DashBot" /></div>
           <div className="login-left-logo-text">
             <div className="login-left-logo-name">Dashbot</div>
             <div className="login-left-logo-sub">DASHCONT TECHNOLOGY</div>
@@ -62,23 +63,21 @@ export default function LoginForm({ onAuth, onDemo }) {
         </div>
 
         <div className="login-left-hero">
+          <div className="login-badge">⚡ Tributación con IA</div>
           <div className="login-left-headline">
-            Gestiona el buzón SUNAT de tus clientes <span>sin complicaciones.</span>
+            Toda tu gestión tributaria <span>en un solo lugar.</span>
           </div>
           <div className="login-left-desc">
-            Plataforma multiempresa para contadores y estudios contables. Monitoreo automático de notificaciones tributarias.
+            Plataforma multiempresa con IA para contadores y microempresarios. Seis módulos, cero complicaciones.
           </div>
           <div className="login-left-features">
-            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Registra todas tus empresas en un solo lugar</span></div>
-            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Alertas de multas, cobranzas y esquelas</span></div>
-            <div className="login-left-feature"><div className="login-left-feature-dot">✓</div><span>Resumen ejecutivo con inteligencia artificial</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">📥</div><span><b>Buzón SUNAT</b> — multas y esquelas detectadas por IA</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">📆</div><span><b>Agenda Tributaria</b> — vencimientos en Kanban, cero olvidos</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">📸</div><span><b>Escáner IA</b> — sube una factura y queda registrada</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">👥</div><span><b>Equipo y Planilla</b> — 5ta, 4ta y PLAME al día</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">🛰️</div><span><b>SIRE conectado</b> — compras y ventas desde la API SUNAT</span></div>
+            <div className="login-left-feature"><div className="login-left-feature-ic">📊</div><span><b>Reportes y Copiloto</b> — resumen de IGV y chatbot tributario</span></div>
           </div>
-        </div>
-
-        <div className="login-left-stats">
-          <div><div className="login-stat-val">500+</div><div className="login-stat-lbl">Contadores</div></div>
-          <div><div className="login-stat-val">12k+</div><div className="login-stat-lbl">Alertas</div></div>
-          <div><div className="login-stat-val">99.9%</div><div className="login-stat-lbl">Uptime</div></div>
         </div>
       </div>
 
@@ -86,6 +85,7 @@ export default function LoginForm({ onAuth, onDemo }) {
         <div className="login-card">
           {mode === 'login' ? (
             <>
+              {aviso && <div className="login-aviso">🔒 {aviso}</div>}
               <div className="login-card-title">Bienvenido de vuelta</div>
               <div className="login-card-sub">Ingresa a tu cuenta para continuar.</div>
 
@@ -164,6 +164,11 @@ export default function LoginForm({ onAuth, onDemo }) {
 
           <a href="/landing" className="back-home">← Volver a la página principal</a>
         </div>
+      </div>
+
+      <div className="login-robot">
+        <div className="login-robot-glow" />
+        <img src="/robot-full.png" alt="Robot Dashbot" />
       </div>
     </div>
   )

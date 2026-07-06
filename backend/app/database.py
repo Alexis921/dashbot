@@ -37,6 +37,14 @@ class User(Base):
     plan = Column(String(50), default="free")
     max_empresas = Column(Integer, default=10)
     terminos_aceptados = Column(Boolean, default=False)
+    # Perfil
+    foto = Column(Text)                      # avatar como data URL (base64, redimensionado)
+    fecha_nacimiento = Column(String(10))    # YYYY-MM-DD
+    sexo = Column(String(1))                 # M | F
+    celular = Column(String(30))
+    cargo = Column(String(40))               # Practicante | Auxiliar | ... | Ingeniero Contable
+    email = Column(String(150))
+    colegiatura = Column(String(40))         # N.º de colegiatura (CCP) del contador
     created_at = Column(DateTime, default=datetime.utcnow)
 
     empresas = relationship("Empresa", back_populates="user", cascade="all, delete-orphan")
@@ -67,6 +75,10 @@ class Empresa(Base):
     ubicacion = Column(String(200))            # distrito, provincia, departamento
     padrones = Column(String(300))
     ruc_sync_at = Column(DateTime)
+
+    # Credenciales de API SUNAT (Menú SOL → Credenciales de API SUNAT), para SIRE
+    api_client_id = Column(String(80))
+    api_client_secret_enc = Column(Text)   # cifrado con Fernet, nunca en texto plano
 
     user = relationship("User", back_populates="empresas")
 
@@ -265,6 +277,78 @@ class TalentoEvento(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Documento(Base):
+    """Archivo del colaborador: contrato, boleta, doc. de identidad, CV, certificado, etc."""
+    __tablename__ = "documentos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    colaborador_id = Column(Integer, ForeignKey("colaboradores.id"), index=True, nullable=True)
+    colaborador_nombre = Column(String(200))
+    tipo = Column(String(40), default="contrato")   # contrato|boleta|identidad|cv|certificado|otro
+    titulo = Column(String(200))
+    descripcion = Column(Text)
+    nombre_archivo = Column(String(255))
+    ruta = Column(String(500))
+    tamano = Column(Integer, default=0)
+    mime = Column(String(120))
+    fecha_subida = Column(DateTime, default=datetime.utcnow)
+
+
+class HorarioBloque(Base):
+    """Bloque horario del contador (agenda por horas del Horario Contable)."""
+    __tablename__ = "horario_bloques"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    fecha = Column(String(10), index=True)     # YYYY-MM-DD
+    hora = Column(Integer)                      # 0..23
+    actividad = Column(Text)
+    color = Column(String(20))                 # color de la categoría (hex)
+    categoria = Column(String(40))             # clave de categoría
+    recordatorio = Column(String(5))           # HH:MM
+    comentarios = Column(Text)                 # JSON list [{texto, fecha}]
+    archivos = Column(Text)                    # JSON list [{fid, nombre, ruta, mime, tamano}]
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Comprobante(Base):
+    """Comprobante registrado en el libro de compras/ventas (registro contable)."""
+    __tablename__ = "comprobantes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    operacion = Column(String(10), default="compra")      # compra | venta
+    tipo_comprobante = Column(String(60))
+    serie_numero = Column(String(40))
+    ruc_emisor = Column(String(20))
+    razon_emisor = Column(String(200))
+    ruc_cliente = Column(String(20))
+    razon_cliente = Column(String(200))
+    fecha_emision = Column(String(10))
+    moneda = Column(String(8), default="PEN")
+    base_imponible = Column(Float, default=0)
+    igv = Column(Float, default=0)
+    importe_total = Column(Float, default=0)
+    tipo_adquisicion = Column(String(20))                 # bien | mercaderia | servicio (solo compra)
+    credito_fiscal = Column(Boolean, default=False)
+    credito_fiscal_monto = Column(Float, default=0)
+    gasto_deducible = Column(Boolean, default=False)
+    gasto_monto = Column(Float, default=0)
+    retencion_aplica = Column(Boolean, default=False)
+    retencion_monto = Column(Float, default=0)
+    detraccion_aplica = Column(Boolean, default=False)
+    detraccion_porcentaje = Column(Float, default=0)
+    detraccion_monto = Column(Float, default=0)
+    detraccion_codigo = Column(String(20))
+    estado = Column(String(20), default="registrado")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class PlanillaTrabajador(Base):
     """Registro mensual de planilla de un trabajador (5ta categoría), formato PLAME."""
     __tablename__ = "planilla_trabajadores"
@@ -303,6 +387,53 @@ class RentaCuarta(Base):
     fecha_emision = Column(String(10))
     monto_bruto = Column(Float, default=0)
     retencion = Column(Float, default=0)                # 8% si corresponde
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DeclaracionPDT(Base):
+    """Declaración mensual PDT 621 importada del reporte SUNAT (1 fila = 1 mes)."""
+    __tablename__ = "declaraciones_pdt"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    anio = Column(Integer, index=True)
+    mes = Column(Integer)                                # 1..12
+    tipo_decl = Column(String(30), default="Original")   # Original | Rectificatoria
+    igv_justo = Column(String(4))                        # SI | NO (acogimiento IGV Justo)
+    ventas_base = Column(Float)      # casilla 100
+    ventas_igv = Column(Float)       # casilla 101
+    compras_base = Column(Float)     # casilla 107
+    compras_igv = Column(Float)      # casilla 108
+    renta_ingresos = Column(Float)   # casilla 301
+    renta_pago_cta = Column(Float)   # casilla 312
+    igv_resultante = Column(Float)   # casilla 140
+    igv_a_pagar = Column(Float)      # casilla 184
+    renta_neta = Column(Float)       # casilla 304 (negativo = saldo a favor)
+    igv_deuda = Column(Float)        # casilla 188 — TOTAL deuda IGV
+    renta_deuda = Column(Float)      # casilla 324 — TOTAL deuda Renta
+    detalle_json = Column(Text)      # todas las casillas del PDT (JSON {casilla: valor})
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PagoTributo(Base):
+    """Pago importado del reporte SUNAT 'Detalle de declaraciones y pagos'."""
+    __tablename__ = "pagos_tributos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    empresa_id = Column(Integer, ForeignKey("empresas.id"), index=True, nullable=True)
+    anio = Column(Integer, index=True)
+    mes = Column(Integer)                # periodo YYYYMM separado
+    formulario = Column(String(10))      # 0621 | 0601 | 1662 ...
+    orden = Column(String(20))
+    descripcion = Column(String(120))
+    banco = Column(String(40))
+    fecha_pago = Column(String(10))      # ISO yyyy-mm-dd
+    cod_tributo = Column(String(10))     # 1011 IGV, 3031 R3ra, 5210 EsSalud, 8021 fracc...
+    tributo = Column(String(120))
+    categoria = Column(String(15), index=True)  # IGV|RENTA3|RENTA4|RENTA5|RENTA_ANUAL|ONP|ESSALUD|FRACC|OTROS
+    importe = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -355,6 +486,17 @@ def _migrate_columns():
                 ucols = {c["name"] for c in insp.get_columns("users")}
                 if "terminos_aceptados" not in ucols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN terminos_aceptados BOOLEAN DEFAULT 0"))
+                for col, tipo in {"foto": "TEXT", "fecha_nacimiento": "VARCHAR(10)",
+                                  "sexo": "VARCHAR(1)", "celular": "VARCHAR(30)", "cargo": "VARCHAR(40)",
+                                  "email": "VARCHAR(150)", "colegiatura": "VARCHAR(40)"}.items():
+                    if col not in ucols:
+                        conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {tipo}"))
+            if "horario_bloques" in tables:
+                hcols = {c["name"] for c in insp.get_columns("horario_bloques")}
+                for col, tipo in {"color": "VARCHAR(20)", "categoria": "VARCHAR(40)",
+                                  "recordatorio": "VARCHAR(5)", "comentarios": "TEXT", "archivos": "TEXT"}.items():
+                    if col not in hcols:
+                        conn.execute(text(f"ALTER TABLE horario_bloques ADD COLUMN {col} {tipo}"))
             if "notifications" in tables:
                 cols = {c["name"] for c in insp.get_columns("notifications")}
                 if "empresa_id" not in cols:
@@ -368,6 +510,7 @@ def _migrate_columns():
                     "tipo_contrib": "VARCHAR(120)", "actividad_economica": "VARCHAR(300)",
                     "direccion": "VARCHAR(400)", "ubicacion": "VARCHAR(200)",
                     "padrones": "VARCHAR(300)", "ruc_sync_at": "DATETIME",
+                    "api_client_id": "VARCHAR(80)", "api_client_secret_enc": "TEXT",
                 }
                 for col, tipo in nuevas.items():
                     if col not in ecols:

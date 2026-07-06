@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -23,15 +23,18 @@ from datetime import date
 from app.database import (
     get_db, init_db, User, Empresa, Notification, SyncLog,
     Programacion, Configuracion, Obligacion, ObligacionEvento, Colaborador,
-    PlanillaTrabajador, RentaCuarta, TalentoEvento,
+    PlanillaTrabajador, RentaCuarta, TalentoEvento, Documento, Comprobante, HorarioBloque,
+    DeclaracionPDT, PagoTributo,
 )
 from app import planilla as pl
+from app import declaraciones as decl
 from app.auth import (
     hash_password, verify_password, create_token, get_current_user,
     encrypt_secret, decrypt_secret,
 )
 from app.ruc_lookup import lookup_ruc
 from app.cronograma import get_vencimientos
+from app.sire import cargar_propuesta, probar_acceso
 from app.obligaciones import (
     generar_desde_cronograma, obligacion_dict, ESTADOS, ESTADOS_LABEL,
     evento_dict, log_actividad, chat_obligacion, chat_general,
@@ -251,6 +254,67 @@ class TalentoEventoIn(BaseModel):
     estado: str = "registrado"
 
 
+class ComprobanteIn(BaseModel):
+    empresa_id: Optional[int] = None
+    operacion: str = "compra"
+    tipo_comprobante: Optional[str] = ""
+    serie_numero: Optional[str] = ""
+    ruc_emisor: Optional[str] = ""
+    razon_emisor: Optional[str] = ""
+    ruc_cliente: Optional[str] = ""
+    razon_cliente: Optional[str] = ""
+    fecha_emision: Optional[str] = ""
+    moneda: Optional[str] = "PEN"
+    base_imponible: float = 0
+    igv: float = 0
+    importe_total: float = 0
+    tipo_adquisicion: Optional[str] = ""
+    credito_fiscal: bool = False
+    credito_fiscal_monto: float = 0
+    gasto_deducible: bool = False
+    gasto_monto: float = 0
+    retencion_aplica: bool = False
+    retencion_monto: float = 0
+    detraccion_aplica: bool = False
+    detraccion_porcentaje: float = 0
+    detraccion_monto: float = 0
+    detraccion_codigo: Optional[str] = ""
+
+
+class ApiSunatIn(BaseModel):
+    client_id: str
+    client_secret: Optional[str] = ""   # vacío = mantener la actual
+
+
+class SireCargarIn(BaseModel):
+    empresa_id: int
+    periodo: str        # YYYYMM
+    libro: str          # rce | rvie
+
+
+class SireRegistrarIn(BaseModel):
+    empresa_id: int
+    periodo: str
+    libro: str
+    comprobantes: list
+
+
+class HorarioIn(BaseModel):
+    fecha: str
+    hora: int
+    actividad: Optional[str] = None
+    empresa_id: Optional[int] = None
+    color: Optional[str] = None
+    categoria: Optional[str] = None
+    recordatorio: Optional[str] = None
+
+
+class BloqueComentario(BaseModel):
+    fecha: str
+    hora: int
+    texto: str
+
+
 # ── Startup ────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
@@ -270,7 +334,27 @@ def _user_dict(u: User) -> dict:
         "id": u.id, "nombre": u.nombre, "apellido": u.apellido,
         "username": u.username, "plan": u.plan, "max_empresas": u.max_empresas,
         "terminos_aceptados": bool(u.terminos_aceptados),
+        "foto": u.foto or "", "fecha_nacimiento": u.fecha_nacimiento or "",
+        "sexo": u.sexo or "", "celular": u.celular or "", "cargo": u.cargo or "",
+        "email": u.email or "", "colegiatura": u.colegiatura or "",
     }
+
+
+class ProfileUpdate(BaseModel):
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    fecha_nacimiento: Optional[str] = None
+    sexo: Optional[str] = None
+    celular: Optional[str] = None
+    cargo: Optional[str] = None
+    foto: Optional[str] = None
+    email: Optional[str] = None
+    colegiatura: Optional[str] = None
+
+
+class PasswordChange(BaseModel):
+    actual: str
+    nueva: str
 
 
 @app.post("/api/auth/register")
@@ -311,6 +395,48 @@ async def me(user: User = Depends(get_current_user)):
     return {"user": _user_dict(user)}
 
 
+_CARGOS = {"Practicante", "Auxiliar", "Asistente", "Analista", "Supervisor",
+           "Jefe", "Auditor", "Perito Contable", "Ingeniero Contable"}
+
+
+@app.put("/api/auth/profile")
+async def update_profile(req: ProfileUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.nombre is not None:
+        user.nombre = req.nombre.strip()[:100]
+    if req.apellido is not None:
+        user.apellido = req.apellido.strip()[:100]
+    if req.fecha_nacimiento is not None:
+        user.fecha_nacimiento = req.fecha_nacimiento.strip()[:10]
+    if req.sexo is not None:
+        user.sexo = req.sexo.strip()[:1].upper()
+    if req.celular is not None:
+        user.celular = req.celular.strip()[:30]
+    if req.cargo is not None:
+        user.cargo = req.cargo if req.cargo in _CARGOS else ""
+    if req.email is not None:
+        user.email = req.email.strip()[:150]
+    if req.colegiatura is not None:
+        user.colegiatura = req.colegiatura.strip()[:40]
+    if req.foto is not None:
+        if req.foto and len(req.foto) > 3_000_000:
+            raise HTTPException(413, "La foto es demasiado grande. Usa una imagen más pequeña.")
+        user.foto = req.foto
+    db.commit()
+    db.refresh(user)
+    return {"success": True, "user": _user_dict(user)}
+
+
+@app.post("/api/auth/change-password")
+async def change_password(req: PasswordChange, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not verify_password(req.actual, user.password_hash):
+        raise HTTPException(400, "Tu contraseña actual no es correcta.")
+    if len(req.nueva) < 6:
+        raise HTTPException(400, "La nueva contraseña debe tener al menos 6 caracteres.")
+    user.password_hash = hash_password(req.nueva)
+    db.commit()
+    return {"success": True}
+
+
 # ── Consulta de RUC ─────────────────────────────────────────────────────────
 @app.get("/api/ruc/{ruc}")
 async def consulta_ruc(ruc: str, user: User = Depends(get_current_user)):
@@ -329,6 +455,8 @@ def _empresa_dict(e: Empresa) -> dict:
         "direccion": e.direccion or "", "ubicacion": e.ubicacion or "",
         "padrones": e.padrones or "",
         "ruc_sync_at": e.ruc_sync_at.isoformat() if e.ruc_sync_at else None,
+        "api_client_id": e.api_client_id or "",
+        "api_configurada": bool(e.api_client_id and e.api_client_secret_enc),
     }
 
 
@@ -388,7 +516,19 @@ async def create_empresa(
     db.add(empresa)
     db.commit()
     db.refresh(empresa)
-    return {"success": True, "empresa": _empresa_dict(empresa)}
+
+    # Generar automáticamente su Kanban/Calendario (Declaraciones + SIRE del año).
+    # Best-effort: si SUNAT no responde en este momento, la empresa se crea igual
+    # y el usuario puede usar "Generar del cronograma" después.
+    obligaciones_creadas = 0
+    try:
+        r = await generar_desde_cronograma(empresa, datetime.utcnow().year, db)
+        obligaciones_creadas = r.get("creadas", 0)
+    except Exception:
+        pass
+
+    return {"success": True, "empresa": _empresa_dict(empresa),
+            "obligaciones_creadas": obligaciones_creadas}
 
 
 @app.put("/api/empresas/{empresa_id}")
@@ -629,6 +769,36 @@ async def generar_obligaciones(
     return await generar_desde_cronograma(empresa, anio, db)
 
 
+@app.post("/api/obligaciones/generar-todas")
+async def generar_obligaciones_todas(
+    year: int = 0,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Genera el Kanban/Calendario (Declaraciones + SIRE) para TODAS las empresas del usuario."""
+    anio = year or datetime.utcnow().year
+    empresas = db.query(Empresa).filter(Empresa.user_id == user.id).order_by(Empresa.created_at).all()
+    if not empresas:
+        return {"success": False, "error": "Primero registra una empresa.", "creadas": 0}
+    total = 0
+    detalle = []
+    fallidas = 0
+    for e in empresas:
+        try:
+            r = await generar_desde_cronograma(e, anio, db)
+        except Exception as ex:
+            r = {"success": False, "error": str(ex)[:120], "creadas": 0}
+        creadas = r.get("creadas", 0)
+        total += creadas
+        if not r.get("success"):
+            fallidas += 1
+        detalle.append({"empresa_id": e.id, "empresa": e.alias or e.razon_social or e.ruc,
+                        "creadas": creadas, "success": bool(r.get("success")),
+                        "error": r.get("error", "")})
+    return {"success": True, "creadas": total, "anio": anio,
+            "fallidas": fallidas, "detalle": detalle}
+
+
 @app.post("/api/obligaciones")
 async def create_obligacion(
     req: ObligacionCreate,
@@ -735,6 +905,7 @@ async def delete_obligacion(
 
 # ── Página tipo Notion: detalle, comentarios, archivos, chat ─────────────────
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/data/uploads")
+DOC_DIR = os.getenv("DOC_DIR", "/data/documentos")
 
 
 def _get_owned_obligacion(obligacion_id: int, user: User, db: Session) -> Obligacion:
@@ -1329,6 +1500,410 @@ async def delete_talento(eid: int, user: User = Depends(get_current_user), db: S
     return {"success": True}
 
 
+# ── Documentos del colaborador (Equipo · Contratos y documentos) ──────────────
+_DOC_TIPOS = {"contrato", "boleta", "identidad", "cv", "certificado", "otro"}
+_DOC_FIELDS = ["empresa_id", "colaborador_id", "colaborador_nombre", "tipo",
+               "titulo", "descripcion", "nombre_archivo", "tamano", "mime"]
+
+
+def _doc_dict(d: Documento, empresa_nombre: str = "") -> dict:
+    out = {f: getattr(d, f) for f in _DOC_FIELDS}
+    out["id"] = d.id
+    out["empresa"] = empresa_nombre
+    out["fecha_subida"] = d.fecha_subida.isoformat() if d.fecha_subida else None
+    return out
+
+
+@app.get("/api/equipo/documentos")
+async def list_documentos(colaborador_id: int = 0, empresa_id: int = 0,
+                          user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(Documento).filter(Documento.user_id == user.id)
+    if colaborador_id:
+        q = q.filter(Documento.colaborador_id == colaborador_id)
+    if empresa_id:
+        q = q.filter(Documento.empresa_id == empresa_id)
+    nombres = _empresa_nombre_map(user, db)
+    docs = q.order_by(Documento.fecha_subida.desc()).all()
+    return {"documentos": [_doc_dict(d, nombres.get(d.empresa_id, "")) for d in docs]}
+
+
+@app.post("/api/equipo/documentos")
+async def upload_documento(
+    colaborador_id: int = Form(0),
+    empresa_id: int = Form(0),
+    colaborador_nombre: str = Form(""),
+    tipo: str = Form("otro"),
+    titulo: str = Form(""),
+    descripcion: str = Form(""),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if colaborador_id:
+        c = db.query(Colaborador).filter(
+            Colaborador.id == colaborador_id, Colaborador.user_id == user.id
+        ).first()
+        if not c:
+            raise HTTPException(404, "Colaborador no encontrado.")
+    if empresa_id:
+        _get_owned_empresa(empresa_id, user, db)
+    contenido = await file.read()
+    if len(contenido) > 15 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera los 15 MB.")
+    if tipo not in _DOC_TIPOS:
+        tipo = "otro"
+    carpeta = os.path.join(DOC_DIR, str(user.id), str(colaborador_id or 0))
+    try:
+        os.makedirs(carpeta, exist_ok=True)
+        nombre = (file.filename or "archivo")[:200]
+        ruta = os.path.join(carpeta, f"{uuid.uuid4().hex[:8]}_{nombre}")
+        with open(ruta, "wb") as f:
+            f.write(contenido)
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo guardar el archivo: {str(e)[:120]}")
+    d = Documento(
+        user_id=user.id, empresa_id=empresa_id or None,
+        colaborador_id=colaborador_id or None, colaborador_nombre=colaborador_nombre,
+        tipo=tipo, titulo=(titulo or nombre)[:200], descripcion=descripcion,
+        nombre_archivo=nombre, ruta=ruta, tamano=len(contenido),
+        mime=file.content_type or "application/octet-stream",
+    )
+    db.add(d); db.commit(); db.refresh(d)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "documento": _doc_dict(d, nombres.get(d.empresa_id, ""))}
+
+
+@app.get("/api/equipo/documentos/{doc_id}/download")
+async def download_documento(doc_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = db.query(Documento).filter(Documento.id == doc_id, Documento.user_id == user.id).first()
+    if not d or not d.ruta or not os.path.exists(d.ruta):
+        raise HTTPException(404, "Documento no encontrado.")
+    with open(d.ruta, "rb") as f:
+        data = f.read()
+    return StreamingResponse(
+        iter([data]),
+        media_type=d.mime or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{d.nombre_archivo}"'},
+    )
+
+
+@app.delete("/api/equipo/documentos/{doc_id}")
+async def delete_documento(doc_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = db.query(Documento).filter(Documento.id == doc_id, Documento.user_id == user.id).first()
+    if not d:
+        raise HTTPException(404, "Documento no encontrado.")
+    try:
+        if d.ruta and os.path.exists(d.ruta):
+            os.remove(d.ruta)
+    except Exception:
+        pass
+    db.delete(d); db.commit()
+    return {"success": True}
+
+
+# ── Comprobantes (registro contable · libro de compras/ventas) ────────────────
+_COMP_FIELDS = [
+    "empresa_id", "operacion", "tipo_comprobante", "serie_numero",
+    "ruc_emisor", "razon_emisor", "ruc_cliente", "razon_cliente",
+    "fecha_emision", "moneda", "base_imponible", "igv", "importe_total",
+    "tipo_adquisicion", "credito_fiscal", "credito_fiscal_monto",
+    "gasto_deducible", "gasto_monto", "retencion_aplica", "retencion_monto",
+    "detraccion_aplica", "detraccion_porcentaje", "detraccion_monto", "detraccion_codigo",
+]
+
+
+def _comp_dict(c: Comprobante, empresa_nombre: str = "") -> dict:
+    out = {f: getattr(c, f) for f in _COMP_FIELDS}
+    out["id"] = c.id
+    out["estado"] = c.estado
+    out["empresa"] = empresa_nombre
+    out["created_at"] = c.created_at.isoformat() if c.created_at else None
+    return out
+
+
+@app.get("/api/comprobantes")
+async def list_comprobantes(empresa_id: int = 0, operacion: str = "",
+                            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(Comprobante).filter(Comprobante.user_id == user.id)
+    if empresa_id:
+        q = q.filter(Comprobante.empresa_id == empresa_id)
+    if operacion:
+        q = q.filter(Comprobante.operacion == operacion)
+    nombres = _empresa_nombre_map(user, db)
+    comps = q.order_by(Comprobante.created_at.desc()).all()
+    return {"comprobantes": [_comp_dict(c, nombres.get(c.empresa_id, "")) for c in comps]}
+
+
+@app.post("/api/comprobantes")
+async def create_comprobante(req: ComprobanteIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if req.empresa_id:
+        _get_owned_empresa(req.empresa_id, user, db)
+    c = Comprobante(user_id=user.id)
+    for f in _COMP_FIELDS:
+        setattr(c, f, getattr(req, f))
+    db.add(c); db.commit(); db.refresh(c)
+    nombres = _empresa_nombre_map(user, db)
+    return {"success": True, "comprobante": _comp_dict(c, nombres.get(c.empresa_id, ""))}
+
+
+@app.delete("/api/comprobantes/{cid}")
+async def delete_comprobante(cid: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    c = db.query(Comprobante).filter(Comprobante.id == cid, Comprobante.user_id == user.id).first()
+    if not c:
+        raise HTTPException(404, "Comprobante no encontrado.")
+    db.delete(c); db.commit()
+    return {"success": True}
+
+
+# ── SIRE SUNAT (API oficial: RVIE ventas / RCE compras) ───────────────────────
+@app.put("/api/empresas/{empresa_id}/api-sunat")
+async def save_api_sunat(empresa_id: int, req: ApiSunatIn,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Guarda las Credenciales de API SUNAT de la empresa (client_secret cifrado)."""
+    empresa = _get_owned_empresa(empresa_id, user, db)
+    cid = req.client_id.strip()
+    if not cid:
+        raise HTTPException(400, "Ingresa el ID (client_id) de tu aplicación en SUNAT.")
+    empresa.api_client_id = cid[:80]
+    if req.client_secret and req.client_secret.strip():
+        empresa.api_client_secret_enc = encrypt_secret(req.client_secret.strip())
+    if not empresa.api_client_secret_enc:
+        raise HTTPException(400, "Ingresa la CLAVE (client_secret) de tu aplicación en SUNAT.")
+    db.commit(); db.refresh(empresa)
+    return {"success": True, "empresa": _empresa_dict(empresa)}
+
+
+def _sire_creds(empresa) -> dict:
+    if not (empresa.api_client_id and empresa.api_client_secret_enc):
+        raise HTTPException(400, "Esta empresa aún no tiene configuradas sus Credenciales de API SUNAT. "
+                                 "Ve a SIRE SUNAT → Configuración.")
+    if not (empresa.sol_usuario and empresa.sol_password_enc):
+        raise HTTPException(400, "Esta empresa no tiene clave SOL registrada.")
+    return {
+        "client_id": empresa.api_client_id,
+        "client_secret": decrypt_secret(empresa.api_client_secret_enc),
+        "ruc": empresa.ruc,
+        "sol_usuario": empresa.sol_usuario,
+        "sol_password": decrypt_secret(empresa.sol_password_enc),
+    }
+
+
+@app.post("/api/sire/probar")
+async def sire_probar(req: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Prueba por etapas la conexión SIRE de una empresa (token → acceso → períodos)."""
+    empresa = _get_owned_empresa(int(req.get("empresa_id") or 0), user, db)
+    creds = _sire_creds(empresa)
+    try:
+        return await probar_acceso(creds["client_id"], creds["client_secret"], creds["ruc"],
+                                   creds["sol_usuario"], creds["sol_password"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Error al probar la conexión: {str(e)[:180]}")
+
+
+@app.post("/api/sire/cargar")
+async def sire_cargar(req: SireCargarIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    empresa = _get_owned_empresa(req.empresa_id, user, db)
+    if req.libro not in ("rce", "rvie"):
+        raise HTTPException(400, "Libro inválido.")
+    if not (len(req.periodo) == 6 and req.periodo.isdigit()):
+        raise HTTPException(400, "Período inválido (usa AAAAMM).")
+    creds = _sire_creds(empresa)
+    try:
+        return await cargar_propuesta(creds["client_id"], creds["client_secret"], creds["ruc"],
+                                      creds["sol_usuario"], creds["sol_password"],
+                                      req.libro, req.periodo)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Error al consultar SUNAT: {str(e)[:180]}")
+
+
+@app.post("/api/sire/registrar")
+async def sire_registrar(req: SireRegistrarIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Registra los comprobantes previsualizados del SIRE en el libro de compras/ventas."""
+    empresa = _get_owned_empresa(req.empresa_id, user, db)
+    operacion = "compra" if req.libro == "rce" else "venta"
+    existentes = {c.serie_numero for c in db.query(Comprobante).filter(
+        Comprobante.user_id == user.id, Comprobante.empresa_id == empresa.id,
+        Comprobante.operacion == operacion).all()}
+    creados = 0
+    omitidos = 0
+    for c in req.comprobantes:
+        sn = (c.get("serie_numero") or "").strip()
+        if not sn or sn in existentes:
+            omitidos += 1
+            continue
+        igv = float(c.get("igv") or 0)
+        base = float(c.get("base_imponible") or 0)
+        es_factura = "factura" in (c.get("tipo_comprobante") or "").lower()
+        comp = Comprobante(
+            user_id=user.id, empresa_id=empresa.id, operacion=operacion,
+            tipo_comprobante=(c.get("tipo_comprobante") or "")[:60],
+            serie_numero=sn[:40],
+            fecha_emision=(c.get("fecha_emision") or "")[:10],
+            moneda=(c.get("moneda") or "PEN")[:8],
+            base_imponible=base, igv=igv,
+            importe_total=float(c.get("importe_total") or 0),
+            credito_fiscal=(operacion == "compra" and es_factura and igv > 0),
+            credito_fiscal_monto=igv if (operacion == "compra" and es_factura and igv > 0) else 0,
+            gasto_deducible=(operacion == "compra"),
+            gasto_monto=base if operacion == "compra" else 0,
+        )
+        if operacion == "compra":
+            comp.ruc_emisor = (c.get("num_doc") or "")[:20]
+            comp.razon_emisor = (c.get("razon_social") or "")[:200]
+            comp.ruc_cliente = empresa.ruc
+            comp.razon_cliente = empresa.razon_social or ""
+        else:
+            comp.ruc_emisor = empresa.ruc
+            comp.razon_emisor = empresa.razon_social or ""
+            comp.ruc_cliente = (c.get("num_doc") or "")[:20]
+            comp.razon_cliente = (c.get("razon_social") or "")[:200]
+        db.add(comp)
+        existentes.add(sn)
+        creados += 1
+    db.commit()
+    return {"success": True, "creados": creados, "omitidos": omitidos}
+
+
+# ── Horario Contable (agenda por horas) ───────────────────────────────────────
+def _jload(raw):
+    try:
+        return json.loads(raw) if raw else []
+    except Exception:
+        return []
+
+
+def _bloque_dict(b: HorarioBloque) -> dict:
+    return {
+        "id": b.id, "fecha": b.fecha, "hora": b.hora, "actividad": b.actividad or "",
+        "empresa_id": b.empresa_id, "color": b.color or "", "categoria": b.categoria or "",
+        "recordatorio": b.recordatorio or "",
+        "comentarios": [{"texto": c.get("texto", ""), "fecha": c.get("fecha", "")} for c in _jload(b.comentarios)],
+        "archivos": [{"fid": a.get("fid"), "nombre": a.get("nombre"), "mime": a.get("mime"), "tamano": a.get("tamano")} for a in _jload(b.archivos)],
+    }
+
+
+def _get_or_create_bloque(db, user, fecha, hora) -> HorarioBloque:
+    b = db.query(HorarioBloque).filter(
+        HorarioBloque.user_id == user.id, HorarioBloque.fecha == fecha, HorarioBloque.hora == hora
+    ).first()
+    if not b:
+        b = HorarioBloque(user_id=user.id, fecha=fecha, hora=hora)
+        db.add(b)
+    return b
+
+
+def _bloque_vacio(b: HorarioBloque) -> bool:
+    return (not (b.actividad or "").strip() and not (b.color or "") and not (b.recordatorio or "")
+            and not _jload(b.comentarios) and not _jload(b.archivos))
+
+
+@app.get("/api/horario")
+async def list_horario(fecha: str = "", user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(HorarioBloque).filter(HorarioBloque.user_id == user.id)
+    if fecha:
+        q = q.filter(HorarioBloque.fecha == fecha)
+    bloques = q.order_by(HorarioBloque.hora).all()
+    return {"bloques": [_bloque_dict(b) for b in bloques]}
+
+
+@app.post("/api/horario")
+async def save_horario(req: HorarioIn, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    b = _get_or_create_bloque(db, user, req.fecha, req.hora)
+    if req.actividad is not None:
+        b.actividad = req.actividad.strip()[:2000]
+    if req.color is not None:
+        b.color = req.color[:20]
+    if req.categoria is not None:
+        b.categoria = req.categoria[:40]
+    if req.recordatorio is not None:
+        b.recordatorio = req.recordatorio[:5]
+    if req.empresa_id is not None:
+        b.empresa_id = req.empresa_id or None
+    b.updated_at = datetime.utcnow()
+    if _bloque_vacio(b):
+        if b.id:
+            db.delete(b); db.commit()
+        return {"success": True, "bloque": {"hora": req.hora, "actividad": "", "comentarios": [], "archivos": []}}
+    db.commit(); db.refresh(b)
+    return {"success": True, "bloque": _bloque_dict(b)}
+
+
+@app.post("/api/horario/comentario")
+async def horario_comentario(req: BloqueComentario, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not req.texto.strip():
+        raise HTTPException(400, "El comentario no puede estar vacío.")
+    b = _get_or_create_bloque(db, user, req.fecha, req.hora)
+    lst = _jload(b.comentarios)
+    lst.append({"texto": req.texto.strip()[:1000], "fecha": datetime.utcnow().isoformat()})
+    b.comentarios = json.dumps(lst)
+    b.updated_at = datetime.utcnow()
+    db.commit(); db.refresh(b)
+    return {"success": True, "bloque": _bloque_dict(b)}
+
+
+@app.post("/api/horario/archivo")
+async def horario_archivo(
+    fecha: str = Form(...), hora: int = Form(...), file: UploadFile = File(...),
+    user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    contenido = await file.read()
+    if len(contenido) > 15 * 1024 * 1024:
+        raise HTTPException(413, "El archivo supera los 15 MB.")
+    b = _get_or_create_bloque(db, user, fecha, hora)
+    carpeta = os.path.join(DOC_DIR, "horario", str(user.id))
+    try:
+        os.makedirs(carpeta, exist_ok=True)
+        fid = uuid.uuid4().hex
+        nombre = (file.filename or "archivo")[:200]
+        ruta = os.path.join(carpeta, f"{fid}_{nombre}")
+        with open(ruta, "wb") as f:
+            f.write(contenido)
+    except Exception as e:
+        raise HTTPException(500, f"No se pudo guardar el archivo: {str(e)[:120]}")
+    lst = _jload(b.archivos)
+    lst.append({"fid": fid, "nombre": nombre, "ruta": ruta,
+                "mime": file.content_type or "application/octet-stream", "tamano": len(contenido)})
+    b.archivos = json.dumps(lst)
+    b.updated_at = datetime.utcnow()
+    db.commit(); db.refresh(b)
+    return {"success": True, "bloque": _bloque_dict(b)}
+
+
+@app.get("/api/horario/buscar")
+async def buscar_horario(q: str = "", user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Busca apuntes del usuario en su agenda horaria (actividad y comentarios)."""
+    q = q.strip()
+    if len(q) < 2:
+        return {"resultados": []}
+    like = f"%{q}%"
+    bloques = (
+        db.query(HorarioBloque)
+        .filter(HorarioBloque.user_id == user.id)
+        .filter((HorarioBloque.actividad.ilike(like)) | (HorarioBloque.comentarios.ilike(like)))
+        .order_by(HorarioBloque.fecha.desc(), HorarioBloque.hora)
+        .limit(40).all()
+    )
+    return {"resultados": [_bloque_dict(b) for b in bloques]}
+
+
+@app.get("/api/horario/archivo/{fid}/download")
+async def horario_archivo_download(fid: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    for b in db.query(HorarioBloque).filter(HorarioBloque.user_id == user.id).all():
+        for a in _jload(b.archivos):
+            if a.get("fid") == fid and a.get("ruta") and os.path.exists(a["ruta"]):
+                with open(a["ruta"], "rb") as f:
+                    data = f.read()
+                return StreamingResponse(
+                    iter([data]), media_type=a.get("mime") or "application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="{a.get("nombre")}"'},
+                )
+    raise HTTPException(404, "Archivo no encontrado.")
+
+
 # ── Planilla (PLAME): Trabajadores 5ta + Renta 4ta ──────────────────────────
 _TRAB_FIELDS = ["periodo", "num_doc", "nombre", "regimen_pensionario", "afp_nombre",
                 "dias_laborados", "remuneracion", "asignacion_familiar", "otros_ingresos",
@@ -1587,3 +2162,181 @@ async def demo_sync():
         "synced_at": datetime.utcnow().isoformat(),
         "is_demo": True,
     }
+
+
+# ── Declaraciones y Pagos (PDT 621 + pagos SUNAT) ────────────────────────────
+_PDT_FIELDS = ["anio", "mes", "tipo_decl", "igv_justo", "ventas_base", "ventas_igv",
+               "compras_base", "compras_igv", "renta_ingresos", "renta_pago_cta",
+               "igv_resultante", "igv_a_pagar", "renta_neta", "igv_deuda", "renta_deuda"]
+_PAGO_FIELDS = ["anio", "mes", "formulario", "orden", "descripcion", "banco",
+                "fecha_pago", "cod_tributo", "tributo", "categoria", "importe"]
+
+
+class PdtUpdate(BaseModel):
+    tipo_decl: Optional[str] = None
+    igv_justo: Optional[str] = None
+    ventas_base: Optional[float] = None
+    ventas_igv: Optional[float] = None
+    compras_base: Optional[float] = None
+    compras_igv: Optional[float] = None
+    renta_ingresos: Optional[float] = None
+    renta_pago_cta: Optional[float] = None
+    igv_resultante: Optional[float] = None
+    igv_a_pagar: Optional[float] = None
+    renta_neta: Optional[float] = None
+    igv_deuda: Optional[float] = None
+    renta_deuda: Optional[float] = None
+
+
+def _pdt_dict(d: DeclaracionPDT) -> dict:
+    out = {f: getattr(d, f) for f in _PDT_FIELDS}
+    out["id"] = d.id
+    out["empresa_id"] = d.empresa_id
+    out["detalle"] = json.loads(d.detalle_json) if d.detalle_json else {}
+    return out
+
+
+@app.post("/api/declaraciones/pdt/importar")
+async def importar_pdt(empresa_id: int = 0, modo: str = "cargar", file: UploadFile = File(...),
+                       user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if empresa_id:
+        _get_owned_empresa(empresa_id, user, db)
+    contenido = await file.read()
+    try:
+        filas = decl.parsear_pdt621(contenido)
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo leer el Excel: {str(e)[:120]}")
+    if not filas:
+        raise HTTPException(400, "El archivo no tiene el formato del Detalle PDT 621 o no hay meses declarados.")
+    emp = empresa_id or None
+    base = db.query(DeclaracionPDT).filter(DeclaracionPDT.user_id == user.id,
+                                           DeclaracionPDT.empresa_id == emp)
+    if modo == "reemplazar":
+        anios = {f["anio"] for f in filas}
+        base.filter(DeclaracionPDT.anio.in_(anios)).delete(synchronize_session=False)
+    creados, actualizados = 0, 0
+    for fila in filas:
+        existente = None if modo == "reemplazar" else base.filter(
+            DeclaracionPDT.anio == fila["anio"], DeclaracionPDT.mes == fila["mes"]).first()
+        if existente:
+            for k, v in fila.items():
+                setattr(existente, k, v)
+            actualizados += 1
+        else:
+            db.add(DeclaracionPDT(user_id=user.id, empresa_id=emp, **fila))
+            creados += 1
+    db.commit()
+    return {"success": True, "creados": creados, "actualizados": actualizados}
+
+
+@app.get("/api/declaraciones/pdt")
+async def list_pdt(empresa_id: int = 0, anio: int = 0,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(DeclaracionPDT).filter(DeclaracionPDT.user_id == user.id)
+    if empresa_id:
+        q = q.filter(DeclaracionPDT.empresa_id == empresa_id)
+    if anio:
+        q = q.filter(DeclaracionPDT.anio == anio)
+    decls = q.order_by(DeclaracionPDT.anio, DeclaracionPDT.mes).all()
+    return {"declaraciones": [_pdt_dict(d) for d in decls]}
+
+
+@app.put("/api/declaraciones/pdt/{decl_id}")
+async def update_pdt(decl_id: int, req: PdtUpdate,
+                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = db.query(DeclaracionPDT).filter(DeclaracionPDT.id == decl_id,
+                                        DeclaracionPDT.user_id == user.id).first()
+    if not d:
+        raise HTTPException(404, "Declaración no encontrada")
+    for k, v in req.model_dump(exclude_unset=True).items():
+        setattr(d, k, v)
+    db.commit()
+    return {"success": True, "declaracion": _pdt_dict(d)}
+
+
+@app.delete("/api/declaraciones/pdt")
+async def limpiar_pdt(empresa_id: int = 0, anio: int = 0,
+                      user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(DeclaracionPDT).filter(DeclaracionPDT.user_id == user.id)
+    if empresa_id:
+        q = q.filter(DeclaracionPDT.empresa_id == empresa_id)
+    if anio:
+        q = q.filter(DeclaracionPDT.anio == anio)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"success": True, "eliminados": n}
+
+
+@app.post("/api/declaraciones/pagos/importar")
+async def importar_pagos(empresa_id: int = 0, modo: str = "cargar", file: UploadFile = File(...),
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if empresa_id:
+        _get_owned_empresa(empresa_id, user, db)
+    contenido = await file.read()
+    try:
+        filas = decl.parsear_pagos(contenido)
+    except Exception as e:
+        raise HTTPException(400, f"No se pudo leer el archivo: {str(e)[:120]}")
+    if not filas:
+        raise HTTPException(400, "El archivo no tiene el formato del Detalle de Declaraciones y Pagos de SUNAT.")
+    emp = empresa_id or None
+    base = db.query(PagoTributo).filter(PagoTributo.user_id == user.id,
+                                        PagoTributo.empresa_id == emp)
+    if modo == "reemplazar":
+        anios = {f["anio"] for f in filas}
+        base.filter(PagoTributo.anio.in_(anios)).delete(synchronize_session=False)
+        db.flush()
+    creados, omitidos = 0, 0
+    for fila in filas:
+        dup = None if modo == "reemplazar" else base.filter(
+            PagoTributo.anio == fila["anio"], PagoTributo.mes == fila["mes"],
+            PagoTributo.orden == fila["orden"],
+            PagoTributo.cod_tributo == fila["cod_tributo"],
+            PagoTributo.importe == fila["importe"]).first()
+        if dup:
+            omitidos += 1
+            continue
+        db.add(PagoTributo(user_id=user.id, empresa_id=emp, **fila))
+        creados += 1
+    db.commit()
+    return {"success": True, "creados": creados, "omitidos": omitidos}
+
+
+@app.get("/api/declaraciones/pagos")
+async def list_pagos(empresa_id: int = 0, anio: int = 0,
+                     user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(PagoTributo).filter(PagoTributo.user_id == user.id)
+    if empresa_id:
+        q = q.filter(PagoTributo.empresa_id == empresa_id)
+    if anio:
+        q = q.filter(PagoTributo.anio == anio)
+    pagos = q.order_by(PagoTributo.anio.desc(), PagoTributo.mes.desc(),
+                       PagoTributo.fecha_pago.desc()).all()
+    return {"pagos": [{f: getattr(p, f) for f in _PAGO_FIELDS} | {"id": p.id} for p in pagos]}
+
+
+@app.delete("/api/declaraciones/pagos")
+async def limpiar_pagos(empresa_id: int = 0, anio: int = 0,
+                        user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    q = db.query(PagoTributo).filter(PagoTributo.user_id == user.id)
+    if empresa_id:
+        q = q.filter(PagoTributo.empresa_id == empresa_id)
+    if anio:
+        q = q.filter(PagoTributo.anio == anio)
+    n = q.delete(synchronize_session=False)
+    db.commit()
+    return {"success": True, "eliminados": n}
+
+
+@app.get("/api/declaraciones/reporte")
+async def reporte_declaraciones(empresa_id: int = 0, anio: int = 0,
+                                user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    anio = anio or datetime.utcnow().year
+    qd = db.query(DeclaracionPDT).filter(DeclaracionPDT.user_id == user.id,
+                                         DeclaracionPDT.anio == anio)
+    qp = db.query(PagoTributo).filter(PagoTributo.user_id == user.id,
+                                      PagoTributo.anio == anio)
+    if empresa_id:
+        qd = qd.filter(DeclaracionPDT.empresa_id == empresa_id)
+        qp = qp.filter(PagoTributo.empresa_id == empresa_id)
+    return decl.construir_reporte(qd.all(), qp.all(), anio)

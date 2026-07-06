@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import Colaboradores from './Colaboradores'
 import Planilla from './Planilla'
 import Talento from './Talento'
+import Contratos from './Contratos'
 import { apiListColaboradores } from '../api'
 
 const SUBMODULOS = [
   { id: 'colaboradores', icon: '🧑‍💼', titulo: 'Registro de colaboradores', desc: 'Personal alineado al PDT PLAME / T-Registro.', activo: true },
   { id: 'planilla', icon: '🧾', titulo: 'Planilla y remuneraciones', desc: 'Trabajadores 5ta + renta 4ta, con importar/exportar Excel.', activo: true },
   { id: 'talento', icon: '🌟', titulo: 'Gestión del talento', desc: 'Permisos, memos, horas extras, bonos, desempeño y fechas de pago.', activo: true },
-  { id: 'contratos', icon: '📄', titulo: 'Contratos y documentos', desc: 'Contratos, boletas y archivos del colaborador.', activo: false },
+  { id: 'contratos', icon: '📄', titulo: 'Contratos y documentos', desc: 'Contratos, boletas y archivos del colaborador.', activo: true },
 ]
 
 function Stat({ icon, num, label, color }) {
@@ -20,8 +21,8 @@ function Stat({ icon, num, label, color }) {
   )
 }
 
-export default function Equipo() {
-  const [view, setView] = useState('dashboard')
+export default function Equipo({ initialView = 'dashboard' }) {
+  const [view, setView] = useState(initialView)
   const [colabs, setColabs] = useState([])
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export default function Equipo() {
   if (view === 'colaboradores') return <Colaboradores onBack={() => setView('dashboard')} />
   if (view === 'planilla') return <Planilla onBack={() => setView('dashboard')} />
   if (view === 'talento') return <Talento onBack={() => setView('dashboard')} />
+  if (view === 'contratos') return <Contratos onBack={() => setView('dashboard')} />
 
   const total = colabs.length
   const activos = colabs.filter((c) => c.situacion === 'activo').length

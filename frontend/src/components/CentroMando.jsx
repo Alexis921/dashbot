@@ -10,12 +10,12 @@ const SUGERENCIAS = [
 
 const fmtF = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: 'short' }) : '—'
 
-function Stat({ icon, num, label, color }) {
+function Stat({ icon, num, label, color, bg }) {
   return (
-    <div className="cm-stat">
-      <div className="cm-stat-icon" style={{ color }}>{icon}</div>
+    <div className="cm-stat" style={{ '--c': color, '--cbg': bg }}>
+      <div className="cm-stat-ico">{icon}</div>
       <div>
-        <div className="cm-stat-num" style={{ color }}>{num}</div>
+        <div className="cm-stat-num">{num}</div>
         <div className="cm-stat-label">{label}</div>
       </div>
     </div>
@@ -60,8 +60,9 @@ export default function CentroMando({ user, onOpenEmpresa, onGoModule }) {
 
   return (
     <div className="cm-page">
+      <div className="cm-inner">
       <div className="cm-hero">
-        <div className="cm-bot">🤖</div>
+        <div className="cm-bot"><img src="/robot.png" alt="DashBot" className="cm-bot-img" /></div>
         <div>
           <div className="cm-hello">¡Hola{nombre ? `, ${nombre}` : ''}! 👋</div>
           <div className="cm-sub">Soy <strong>Dashbot</strong>, tu copiloto tributario. Aquí tienes tu panorama y puedes preguntarme lo que necesites.</div>
@@ -69,10 +70,10 @@ export default function CentroMando({ user, onOpenEmpresa, onGoModule }) {
       </div>
 
       <div className="cm-stats">
-        <Stat icon="🏢" num={empresas.length} label="Empresas" color="#1B3A6B" />
-        <Stat icon="📋" num={pendientes} label="Obligaciones pendientes" color="#0369a1" />
-        <Stat icon="⏰" num={semana} label="Vencen esta semana" color="#b45309" />
-        <Stat icon="🚨" num={vencidas} label="Vencidas" color="#dc2626" />
+        <Stat icon="🏢" num={empresas.length} label="Empresas" color="#2563eb" bg="#dbeafe" />
+        <Stat icon="📋" num={pendientes} label="Obligaciones pendientes" color="#0a9d63" bg="#d1fae5" />
+        <Stat icon="⏰" num={semana} label="Vencen esta semana" color="#d97706" bg="#fef3c7" />
+        <Stat icon="🚨" num={vencidas} label="Vencidas" color="#dc2626" bg="#fee2e2" />
       </div>
 
       <div className="cm-cols">
@@ -111,7 +112,7 @@ export default function CentroMando({ user, onOpenEmpresa, onGoModule }) {
         </div>
 
         <div className="cm-chat">
-          <div className="cm-chat-h">💬 Pregúntale a Dashbot</div>
+          <div className="cm-chat-h"><span className="cm-online" />💬 Pregúntale a Dashbot</div>
           <div className="cm-chat-msgs">
             {!chat.length && (
               <div className="cm-chat-empty">
@@ -131,6 +132,7 @@ export default function CentroMando({ user, onOpenEmpresa, onGoModule }) {
             <button onClick={() => enviar()} disabled={loading || !pregunta.trim()}>➤</button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )
