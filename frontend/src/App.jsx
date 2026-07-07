@@ -6,7 +6,8 @@ import Programacion from './components/Programacion'
 import Configuracion from './components/Configuracion'
 import Alertas from './components/Alertas'
 import Agenda from './components/Agenda'
-import CentroMando from './components/CentroMando'
+import BuzonSol from './components/BuzonSol'
+import CentroNotificaciones from './components/CentroNotificaciones'
 import Equipo from './components/Equipo'
 import Reportes from './components/Reportes'
 import Perfil from './components/Perfil'
@@ -84,7 +85,7 @@ const MENU = [
 ]
 
 // Módulos cuyo "padre" abre directamente su primer submódulo (no tienen dashboard aparte)
-const DEFAULT_SUB = { notificaciones: 'buzon', agenda: 'kanban' }
+const DEFAULT_SUB = { agenda: 'kanban' }
 
 // Cierre de sesión por inactividad
 const INACTIVIDAD_MAX = 10 * 60 * 1000 // 10 minutos
@@ -188,7 +189,7 @@ export default function App() {
     clearToken(); setUser(null); setDemoMode(false); setSelectedEmpresa(null); go('empresas')
   }
   function openEmpresa(empresa) {
-    setSelectedEmpresa(empresa); go('notificaciones')
+    setSelectedEmpresa(empresa); go('notificaciones', 'buzon')
   }
 
   if (booting) {
@@ -216,11 +217,10 @@ export default function App() {
     if (activeModule === 'reportes' && !demoMode) return <Reportes key={activeSub || 'dash'} initialView={activeSub || 'dashboard'} />
     if (activeModule === 'notificaciones') {
       if (demoMode) return <ChatInterface demoMode key="demo" />
-      const sub = activeSub || 'buzon'
-      if (sub === 'sunafil') return <Sunafil />
-      if (sub === 'declaraciones') return <Declaraciones onGoModule={(m) => go(m)} />
-      if (selectedEmpresa) return <ChatInterface empresa={selectedEmpresa} key={selectedEmpresa.id} />
-      return <CentroMando user={user} onOpenEmpresa={openEmpresa} onGoModule={(m) => go(m)} />
+      if (activeSub === 'sunafil') return <Sunafil />
+      if (activeSub === 'declaraciones') return <Declaraciones onGoModule={(m) => go(m)} />
+      if (activeSub === 'buzon') return <BuzonSol key={selectedEmpresa?.id || 'hub'} user={user} initialEmpresa={selectedEmpresa} onGoModule={(m) => go(m)} />
+      return <CentroNotificaciones user={user} onGo={(s) => go('notificaciones', s)} onGoModule={(m) => go(m)} />
     }
     return <ComingSoon title={activeItem?.label} icon={activeModule} />
   }

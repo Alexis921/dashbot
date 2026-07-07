@@ -484,6 +484,11 @@ export async function apiReporteDecl(empresaId = 0, anio = 0) {
   return req(`/api/declaraciones/reporte?empresa_id=${empresaId}&anio=${anio}`)
 }
 
+// ── Centro de Notificaciones (dashboard) ───────────────────
+export async function apiDashboardNotificaciones() {
+  return req('/api/notificaciones/dashboard')
+}
+
 // ── Demo ───────────────────────────────────────────────────
 export async function apiDemoSync() {
   return req('/api/demo/sync', { method: 'POST', auth: false })

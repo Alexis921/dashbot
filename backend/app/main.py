@@ -2340,3 +2340,113 @@ async def reporte_declaraciones(empresa_id: int = 0, anio: int = 0,
         qd = qd.filter(DeclaracionPDT.empresa_id == empresa_id)
         qp = qp.filter(PagoTributo.empresa_id == empresa_id)
     return decl.construir_reporte(qd.all(), qp.all(), anio)
+
+
+# ── Centro de Notificaciones (dashboard agregador) ───────────────────────────
+@app.get("/api/notificaciones/dashboard")
+async def dashboard_notificaciones(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from datetime import timedelta
+    from sqlalchemy import func, case, and_
+
+    hoy = datetime.utcnow()
+    anio = hoy.year
+    empresas = db.query(Empresa).filter(Empresa.user_id == user.id).all()
+    emp_ids = [e.id for e in empresas]
+
+    # ── Buzón SOL: agregados por empresa (sin cargar adjuntos base64) ──
+    buzon = {}
+    if emp_ids:
+        rows = (db.query(
+                    Notification.empresa_id,
+                    func.count(Notification.id),
+                    func.sum(case((and_(Notification.is_urgent == True, Notification.status == "nuevo"), 1), else_=0)),  # noqa: E712
+                    func.sum(case((Notification.status == "nuevo", 1), else_=0)),
+                    func.max(Notification.synced_at))
+                .filter(Notification.empresa_id.in_(emp_ids))
+                .group_by(Notification.empresa_id).all())
+        for eid, total, urg, nue, last in rows:
+            buzon[eid] = {"total": total or 0, "urgentes": int(urg or 0), "nuevas": int(nue or 0),
+                          "ultima_sync": last.isoformat() if last else None}
+    tot_urgentes = sum(b["urgentes"] for b in buzon.values())
+    tot_nuevas = sum(b["nuevas"] for b in buzon.values())
+    tot_notifs = sum(b["total"] for b in buzon.values())
+    ultima_sync = max((b["ultima_sync"] for b in buzon.values() if b["ultima_sync"]), default=None)
+
+    # ── Declaraciones: reporte global + pendiente por empresa ──
+    decls = db.query(DeclaracionPDT).filter(DeclaracionPDT.user_id == user.id,
+                                            DeclaracionPDT.anio == anio).all()
+    pagos = db.query(PagoTributo).filter(PagoTributo.user_id == user.id,
+                                         PagoTributo.anio == anio).all()
+    rep_global = decl.construir_reporte(decls, pagos, anio)
+    deuda_pendiente = rep_global["totales"]["pendiente"]
+    meses_riesgo = [p["nombre"] for p in rep_global["pendientes"]]
+    deuda_emp = {}
+    for eid in set(d.empresa_id for d in decls if d.empresa_id):
+        r = decl.construir_reporte([d for d in decls if d.empresa_id == eid],
+                                   [p for p in pagos if p.empresa_id == eid], anio)
+        deuda_emp[eid] = r["totales"]["pendiente"]
+
+    # ── Agenda: obligaciones abiertas próximas y vencidas ──
+    abiertas = (db.query(Obligacion)
+                .filter(Obligacion.user_id == user.id,
+                        Obligacion.estado.notin_(["pagado", "declarado", "archivado"]),
+                        Obligacion.fecha_vencimiento.isnot(None)).all())
+    vencidas = [o for o in abiertas if o.fecha_vencimiento < hoy]
+    semana = [o for o in abiertas if hoy <= o.fecha_vencimiento <= hoy + timedelta(days=7)]
+
+    nombres = {e.id: (e.alias or e.razon_social or e.ruc) for e in empresas}
+
+    # ── Feed unificado (rojo primero) ──
+    feed = []
+    if emp_ids:
+        urgentes_notifs = (db.query(Notification.empresa_id, Notification.subject, Notification.date_received)
+                           .filter(Notification.empresa_id.in_(emp_ids),
+                                   Notification.is_urgent == True, Notification.status == "nuevo")  # noqa: E712
+                           .order_by(Notification.date_received.desc()).limit(6).all())
+        for eid, subject, fecha in urgentes_notifs:
+            feed.append({"origen": "buzon", "nivel": "rojo", "titulo": (subject or "Notificación urgente")[:120],
+                         "empresa": nombres.get(eid, ""), "detalle": fecha.strftime("%d %b %Y") if fecha else "", "sub": "buzon"})
+    for p in rep_global["pendientes"]:
+        feed.append({"origen": "declaraciones", "nivel": "rojo",
+                     "titulo": f"PDT 621 de {p['nombre']} sin pagar (S/ {p['monto']:,.0f})",
+                     "empresa": "", "detalle": "riesgo de cobranza coactiva", "sub": "declaraciones"})
+    for o in sorted(vencidas, key=lambda x: x.fecha_vencimiento)[:4]:
+        feed.append({"origen": "agenda", "nivel": "rojo", "titulo": f"VENCIDA: {o.titulo}",
+                     "empresa": nombres.get(o.empresa_id, ""), "detalle": o.fecha_vencimiento.strftime("%d %b"), "sub": None})
+    for o in sorted(semana, key=lambda x: x.fecha_vencimiento)[:5]:
+        dias = (o.fecha_vencimiento - hoy).days
+        feed.append({"origen": "agenda", "nivel": "ambar", "titulo": o.titulo,
+                     "empresa": nombres.get(o.empresa_id, ""),
+                     "detalle": f"vence {o.fecha_vencimiento.strftime('%d %b')} ({dias}d)", "sub": None})
+    feed = feed[:12]
+
+    # ── Radar por empresa ──
+    radar = []
+    for e in empresas:
+        b = buzon.get(e.id)
+        sol = "rojo" if b and b["urgentes"] else "ambar" if b and b["nuevas"] else "verde" if b else "gris"
+        deu = deuda_emp.get(e.id)
+        deudas = "rojo" if deu else "verde" if deu == 0 else "gris"
+        radar.append({"empresa_id": e.id, "nombre": nombres[e.id], "ruc": e.ruc,
+                      "sol": sol, "sunafil": "gris", "deudas": deudas,
+                      "pendiente": deu or 0})
+
+    nivel = ("rojo" if tot_urgentes or deuda_pendiente > 0 or vencidas
+             else "ambar" if tot_nuevas or semana
+             else "verde")
+    asuntos = tot_urgentes + len(meses_riesgo) + len(vencidas) + len(semana)
+
+    return {
+        "semaforo": {"nivel": nivel, "asuntos": asuntos},
+        "stats": {"urgentes": tot_urgentes, "nuevas": tot_nuevas, "notifs": tot_notifs,
+                  "deuda_pendiente": deuda_pendiente, "vencen_semana": len(semana),
+                  "vencidas": len(vencidas), "empresas": len(empresas)},
+        "portales": {
+            "buzon": {"total": tot_notifs, "urgentes": tot_urgentes, "nuevas": tot_nuevas,
+                      "ultima_sync": ultima_sync},
+            "sunafil": {"estado": "proximamente"},
+            "declaraciones": {"pendiente": deuda_pendiente, "meses": meses_riesgo, "anio": anio},
+        },
+        "feed": feed,
+        "radar": radar,
+    }
